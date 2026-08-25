@@ -6,24 +6,13 @@ cypher = SerialManager(port="COM5")
 try:
     cypher.connect()
 
-    # First prove normal commands still work.
-    response = cypher.send_command("PING")
+    response = cypher.send_command(
+        "GET_DISTANCE"
+    )
 
     print()
-    print("PING response:")
+    print("Distance response:")
     print(response)
-
-    print()
-    print("Waiting for Arduino event...")
-
-    event = cypher.get_event(timeout=10)
-
-    if event:
-        print()
-        print("EVENT RECEIVED:")
-        print(event)
-    else:
-        print("No event received.")
 
 finally:
     cypher.disconnect()
