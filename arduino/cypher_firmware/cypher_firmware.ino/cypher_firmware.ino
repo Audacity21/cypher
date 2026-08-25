@@ -1,5 +1,9 @@
 #include <ArduinoJson.h>
 
+unsigned long lastEventTime = 0;
+
+const unsigned long EVENT_INTERVAL = 5000;
+
 void setup() {
   Serial.begin(115200);
 
@@ -11,6 +15,31 @@ void setup() {
 }
 
 void loop() {
+
+  // ---------------------------------
+  // TEST ASYNCHRONOUS EVENT
+  // ---------------------------------
+
+  unsigned long now = millis();
+
+  if (now - lastEventTime >= EVENT_INTERVAL) {
+
+    lastEventTime = now;
+
+    JsonDocument event;
+
+    event["type"] = "event";
+    event["event"] = "test_event";
+    event["data"]["value"] = 1;
+
+    serializeJson(event, Serial);
+    Serial.println();
+  }
+
+
+  // ---------------------------------
+  // SERIAL COMMAND PROCESSING
+  // ---------------------------------
 
   if (!Serial.available()) {
     return;
@@ -32,7 +61,6 @@ void loop() {
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"invalid_json\"}"
     );
-
     return;
   }
 
@@ -48,7 +76,6 @@ void loop() {
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"missing_fields\"}"
     );
-
     return;
   }
 
@@ -56,13 +83,8 @@ void loop() {
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"invalid_type\"}"
     );
-
     return;
   }
-
-  // -------------------------
-  // PING
-  // -------------------------
 
   if (strcmp(cmd, "PING") == 0) {
 
@@ -78,10 +100,6 @@ void loop() {
 
     return;
   }
-
-  // -------------------------
-  // UNKNOWN COMMAND
-  // -------------------------
 
   JsonDocument response;
 
