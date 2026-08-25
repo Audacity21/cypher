@@ -5,14 +5,27 @@ import Radar from "./Radar";
 type SensorMessage = {
   type: string;
   sensor?: string;
+
   data?: {
     distance_cm?: number;
+    smoothed_distance_cm?: number;
+    velocity_cm_s?: number;
+    motion?: string;
   };
 };
 
 function App() {
-  const [distance, setDistance] = useState<number | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [distance, setDistance] =
+    useState<number | null>(null);
+
+  const [velocity, setVelocity] =
+    useState(0);
+
+  const [motion, setMotion] =
+    useState("UNKNOWN");
+
+  const [connected, setConnected] =
+    useState(false);
 
   useEffect(() => {
     const socket = new WebSocket(
@@ -23,20 +36,56 @@ function App() {
       setConnected(true);
     };
 
-    socket.onmessage = (event) => {
-      const message: SensorMessage = JSON.parse(event.data);
-
-      if (
-        message.type === "sensor" &&
-        message.sensor === "distance" &&
-        message.data?.distance_cm !== undefined
-      ) {
-        setDistance(message.data.distance_cm);
-      }
-    };
-
     socket.onclose = () => {
       setConnected(false);
+    };
+
+    socket.onerror = () => {
+      setConnected(false);
+    };
+
+    socket.onmessage = (event) => {
+      const message: SensorMessage =
+        JSON.parse(event.data);
+
+      if (
+        message.type !== "sensor" ||
+        message.sensor !== "distance" ||
+        !message.data
+      ) {
+        return;
+      }
+
+      if (
+        message.data.smoothed_distance_cm !==
+        undefined
+      ) {
+        setDistance(
+          message.data.smoothed_distance_cm
+        );
+      } else if (
+        message.data.distance_cm !== undefined
+      ) {
+        setDistance(
+          message.data.distance_cm
+        );
+      }
+
+      if (
+        message.data.velocity_cm_s !== undefined
+      ) {
+        setVelocity(
+          message.data.velocity_cm_s
+        );
+      }
+
+      if (
+        message.data.motion !== undefined
+      ) {
+        setMotion(
+          message.data.motion
+        );
+      }
     };
 
     return () => {
@@ -44,78 +93,286 @@ function App() {
     };
   }, []);
 
+  const motionClass =
+    motion.toLowerCase();
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at center, #0b1530 0%, #050816 50%, #02030a 100%)",
-        color: "white",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: "Inter, system-ui, sans-serif",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 24,
-          left: 32,
-          letterSpacing: "0.35em",
-          fontWeight: 600,
-        }}
-      >
-        CYPHER
-      </div>
+    <main className="app-shell">
 
-      <div
-        style={{
-          position: "absolute",
-          top: 24,
-          right: 32,
-          fontSize: "0.8rem",
-          letterSpacing: "0.18em",
-          opacity: 0.7,
-        }}
-      >
-        {connected ? "PERCEPTION // ONLINE" : "PERCEPTION // OFFLINE"}
-      </div>
+      <div className="background-grid" />
 
-      <Radar distanceCm={distance} />
+      <header className="topbar">
+        <div>
+          <div className="eyebrow">
+            LOCAL INTELLIGENCE SYSTEM
+          </div>
 
-      <div
-        style={{
-          position: "absolute",
-          bottom: 46,
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "3rem",
-            fontWeight: 700,
-          }}
-        >
-          {distance !== null
-            ? `${distance.toFixed(1)} cm`
-            : "--.- cm"}
+          <div className="brand">
+            CYPHER
+          </div>
         </div>
 
         <div
-          style={{
-            marginTop: 8,
-            fontSize: "0.75rem",
-            letterSpacing: "0.25em",
-            opacity: 0.5,
-          }}
+          className={
+            connected
+              ? "connection online"
+              : "connection offline"
+          }
         >
-          TARGET RANGE
+          <span className="status-dot" />
+
+          {connected
+            ? "PERCEPTION ONLINE"
+            : "PERCEPTION OFFLINE"}
         </div>
-      </div>
+      </header>
+
+      <section className="workspace">
+
+        <aside className="side-panel left-panel">
+
+          <PanelBlock
+            label="RANGE"
+            value={
+              distance !== null
+                ? `${distance.toFixed(1)}`
+                : "--.-"
+            }
+            unit="CM"
+          />
+
+          <PanelBlock
+            label="MOTION"
+            value={motion}
+            className={motionClass}
+          />
+
+          <PanelBlock
+            label="VELOCITY"
+            value={Math.abs(
+              velocity
+            ).toFixed(1)}
+            unit="CM/S"
+          />
+
+          <div className="divider" />
+
+          <div className="mini-label">
+            SENSOR
+          </div>
+
+          <div className="sensor-name">
+            HC-SR04
+          </div>
+
+          <div className="mini-label top-gap">
+            SAMPLE MODE
+          </div>
+
+          <div className="sensor-name">
+            LIVE TRACKING
+          </div>
+
+        </aside>
+
+        <section className="radar-zone">
+
+          <div className="radar-title">
+            PERCEPTION // ULTRASONIC
+          </div>
+
+          <div className="radar-frame">
+            <Radar
+              distanceCm={distance}
+              motion={motion}
+              velocity={velocity}
+            />
+          </div>
+
+          <div className="radar-footer">
+
+            <div>
+              RANGE LIMIT
+              <strong>
+                200 CM
+              </strong>
+            </div>
+
+            <div>
+              AXIS
+              <strong>
+                FORWARD
+              </strong>
+            </div>
+
+            <div>
+              TRACK
+              <strong>
+                {distance !== null
+                  ? "LOCKED"
+                  : "SEARCHING"}
+              </strong>
+            </div>
+
+          </div>
+
+        </section>
+
+        <aside className="side-panel right-panel">
+
+          <div className="panel-heading">
+            TRACK ANALYSIS
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              TARGET
+            </span>
+
+            <strong>
+              {distance !== null
+                ? "DETECTED"
+                : "NONE"}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              VECTOR
+            </span>
+
+            <strong>
+              {motion}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              RATE
+            </span>
+
+            <strong>
+              {velocity.toFixed(1)}
+            </strong>
+          </div>
+
+          <div className="divider" />
+
+          <div className="panel-heading">
+            SYSTEM
+          </div>
+
+          <SystemRow
+            name="ARDUINO"
+            online={connected}
+          />
+
+          <SystemRow
+            name="SERIAL BUS"
+            online={connected}
+          />
+
+          <SystemRow
+            name="RADAR FEED"
+            online={
+              distance !== null
+            }
+          />
+
+          <SystemRow
+            name="AI CORE"
+            online={false}
+            text="PENDING"
+          />
+
+        </aside>
+
+      </section>
+
+      <footer className="bottom-bar">
+
+        <div>
+          CYPHER // PERCEPTION CORE
+        </div>
+
+        <div className="bottom-center">
+          <span />
+          REAL-TIME SENSOR FEED
+          <span />
+        </div>
+
+        <div>
+          BUILD 0.3
+        </div>
+
+      </footer>
+
     </main>
+  );
+}
+
+type PanelBlockProps = {
+  label: string;
+  value: string;
+  unit?: string;
+  className?: string;
+};
+
+function PanelBlock({
+  label,
+  value,
+  unit,
+  className = "",
+}: PanelBlockProps) {
+  return (
+    <div className="metric">
+      <div className="metric-label">
+        {label}
+      </div>
+
+      <div
+        className={`metric-value ${className}`}
+      >
+        {value}
+
+        {unit && (
+          <span>
+            {unit}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SystemRow({
+  name,
+  online,
+  text,
+}: {
+  name: string;
+  online: boolean;
+  text?: string;
+}) {
+  return (
+    <div className="system-row">
+      <span>
+        {name}
+      </span>
+
+      <strong
+        className={
+          online
+            ? "system-ok"
+            : "system-pending"
+        }
+      >
+        {text ??
+          (online
+            ? "ONLINE"
+            : "OFFLINE")}
+      </strong>
+    </div>
   );
 }
 
