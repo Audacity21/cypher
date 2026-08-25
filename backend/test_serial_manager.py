@@ -1,0 +1,19 @@
+from serial_manager import SerialManager
+
+
+cypher = SerialManager(
+    port="COM5",
+)
+
+try:
+    cypher.connect()
+
+    response = cypher.send_command(
+        "PING"
+    )
+
+    print("Response:")
+    print(response)
+
+finally:
+    cypher.disconnect()
