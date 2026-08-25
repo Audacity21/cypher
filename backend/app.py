@@ -6,9 +6,7 @@ from backend.hardware import CypherHardware
 from backend.sensor_stream import SensorStream
 
 
-hardware = CypherHardware(
-    port="COM5"
-)
+hardware = CypherHardware(port="COM5")
 
 sensor_stream = SensorStream(
     hardware=hardware,
@@ -51,14 +49,14 @@ async def websocket_sensors(
 ):
     await websocket.accept()
 
-    print("Radar client connected.")
+    print("Cypher UI connected.")
 
     try:
-        async for sensor_data in sensor_stream.distance_stream():
-            await websocket.send_json(sensor_data)
+        async for state in sensor_stream.sensor_stream():
+            await websocket.send_json(state)
 
     except WebSocketDisconnect:
-        print("Radar client disconnected.")
+        print("Cypher UI disconnected.")
 
     except Exception as error:
         print(f"WebSocket error: {error}")

@@ -4,13 +4,15 @@ import Radar from "./Radar";
 
 type SensorMessage = {
   type: string;
-  sensor?: string;
 
   data?: {
     distance_cm?: number;
     smoothed_distance_cm?: number;
     velocity_cm_s?: number;
     motion?: string;
+
+    light?: number;
+    light_state?: string;
   };
 };
 
@@ -22,6 +24,12 @@ function App() {
     useState(0);
 
   const [motion, setMotion] =
+    useState("UNKNOWN");
+
+  const [light, setLight] =
+    useState<number | null>(null);
+
+  const [lightState, setLightState] =
     useState("UNKNOWN");
 
   const [connected, setConnected] =
@@ -49,30 +57,24 @@ function App() {
         JSON.parse(event.data);
 
       if (
-        message.type !== "sensor" ||
-        message.sensor !== "distance" ||
+        message.type !== "sensor_state" ||
         !message.data
       ) {
         return;
       }
 
       if (
-        message.data.smoothed_distance_cm !==
-        undefined
+        message.data.smoothed_distance_cm
+        !== undefined
       ) {
         setDistance(
           message.data.smoothed_distance_cm
         );
-      } else if (
-        message.data.distance_cm !== undefined
-      ) {
-        setDistance(
-          message.data.distance_cm
-        );
       }
 
       if (
-        message.data.velocity_cm_s !== undefined
+        message.data.velocity_cm_s
+        !== undefined
       ) {
         setVelocity(
           message.data.velocity_cm_s
@@ -80,10 +82,29 @@ function App() {
       }
 
       if (
-        message.data.motion !== undefined
+        message.data.motion
+        !== undefined
       ) {
         setMotion(
           message.data.motion
+        );
+      }
+
+      if (
+        message.data.light
+        !== undefined
+      ) {
+        setLight(
+          message.data.light
+        );
+      }
+
+      if (
+        message.data.light_state
+        !== undefined
+      ) {
+        setLightState(
+          message.data.light_state
         );
       }
     };
@@ -135,7 +156,7 @@ function App() {
             label="RANGE"
             value={
               distance !== null
-                ? `${distance.toFixed(1)}`
+                ? distance.toFixed(1)
                 : "--.-"
             }
             unit="CM"
@@ -157,21 +178,19 @@ function App() {
 
           <div className="divider" />
 
-          <div className="mini-label">
-            SENSOR
-          </div>
+          <PanelBlock
+            label="AMBIENT LIGHT"
+            value={
+              light !== null
+                ? light.toString()
+                : "---"
+            }
+          />
 
-          <div className="sensor-name">
-            HC-SR04
-          </div>
-
-          <div className="mini-label top-gap">
-            SAMPLE MODE
-          </div>
-
-          <div className="sensor-name">
-            LIVE TRACKING
-          </div>
+          <PanelBlock
+            label="LIGHT STATE"
+            value={lightState}
+          />
 
         </aside>
 
@@ -193,16 +212,12 @@ function App() {
 
             <div>
               RANGE LIMIT
-              <strong>
-                200 CM
-              </strong>
+              <strong>200 CM</strong>
             </div>
 
             <div>
-              AXIS
-              <strong>
-                FORWARD
-              </strong>
+              LIGHT
+              <strong>{lightState}</strong>
             </div>
 
             <div>
@@ -225,9 +240,7 @@ function App() {
           </div>
 
           <div className="analysis-row">
-            <span>
-              TARGET
-            </span>
+            <span>TARGET</span>
 
             <strong>
               {distance !== null
@@ -237,9 +250,7 @@ function App() {
           </div>
 
           <div className="analysis-row">
-            <span>
-              VECTOR
-            </span>
+            <span>VECTOR</span>
 
             <strong>
               {motion}
@@ -247,12 +258,10 @@ function App() {
           </div>
 
           <div className="analysis-row">
-            <span>
-              RATE
-            </span>
+            <span>LIGHT</span>
 
             <strong>
-              {velocity.toFixed(1)}
+              {lightState}
             </strong>
           </div>
 
@@ -273,10 +282,13 @@ function App() {
           />
 
           <SystemRow
-            name="RADAR FEED"
-            online={
-              distance !== null
-            }
+            name="ULTRASONIC"
+            online={distance !== null}
+          />
+
+          <SystemRow
+            name="LIGHT SENSOR"
+            online={light !== null}
           />
 
           <SystemRow
@@ -297,12 +309,12 @@ function App() {
 
         <div className="bottom-center">
           <span />
-          REAL-TIME SENSOR FEED
+          MULTI-SENSOR FEED
           <span />
         </div>
 
         <div>
-          BUILD 0.3
+          BUILD 0.4
         </div>
 
       </footer>
@@ -326,6 +338,7 @@ function PanelBlock({
 }: PanelBlockProps) {
   return (
     <div className="metric">
+
       <div className="metric-label">
         {label}
       </div>
@@ -341,6 +354,7 @@ function PanelBlock({
           </span>
         )}
       </div>
+
     </div>
   );
 }
@@ -356,6 +370,7 @@ function SystemRow({
 }) {
   return (
     <div className="system-row">
+
       <span>
         {name}
       </span>
@@ -368,10 +383,13 @@ function SystemRow({
         }
       >
         {text ??
-          (online
-            ? "ONLINE"
-            : "OFFLINE")}
+          (
+            online
+              ? "ONLINE"
+              : "OFFLINE"
+          )}
       </strong>
+
     </div>
   );
 }

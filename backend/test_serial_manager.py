@@ -1,5 +1,3 @@
-import time
-
 from serial_manager import SerialManager
 
 
@@ -8,26 +6,21 @@ cypher = SerialManager(port="COM5")
 try:
     cypher.connect()
 
-    print("Streaming distance. Press Ctrl+C to stop.\n")
+    distance = cypher.send_command(
+        "GET_DISTANCE"
+    )
 
-    while True:
-        response = cypher.send_command("GET_DISTANCE")
+    light = cypher.send_command(
+        "GET_LIGHT"
+    )
 
-        if response.get("ok"):
-            distance = response["data"]["distance_cm"]
+    print()
+    print("Distance:")
+    print(distance)
 
-            print(f"Distance: {distance:.2f} cm")
-
-        else:
-            print(
-                "Distance error:",
-                response.get("error"),
-            )
-
-        time.sleep(0.1)
-
-except KeyboardInterrupt:
-    print("\nStopping distance stream...")
+    print()
+    print("Light:")
+    print(light)
 
 finally:
     cypher.disconnect()

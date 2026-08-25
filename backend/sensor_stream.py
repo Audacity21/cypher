@@ -15,7 +15,7 @@ class SensorStream:
         self.hardware = hardware
         self.interval = interval
 
-        self.history = deque(
+        self.distance_history = deque(
             maxlen=history_size
         )
 
@@ -24,11 +24,11 @@ class SensorStream:
         distance: float,
         timestamp: float,
     ):
-        self.history.append(
+        self.distance_history.append(
             (timestamp, distance)
         )
 
-        if len(self.history) < 2:
+        if len(self.distance_history) < 2:
             return {
                 "smoothed_distance_cm": distance,
                 "velocity_cm_s": 0.0,
@@ -37,7 +37,7 @@ class SensorStream:
 
         distances = [
             item[1]
-            for item in self.history
+            for item in self.distance_history
         ]
 
         smoothed_distance = (
@@ -45,11 +45,11 @@ class SensorStream:
         )
 
         oldest_time, oldest_distance = (
-            self.history[0]
+            self.distance_history[0]
         )
 
         newest_time, newest_distance = (
-            self.history[-1]
+            self.distance_history[-1]
         )
 
         delta_time = (
@@ -84,47 +84,77 @@ class SensorStream:
                 motion,
         }
 
-    async def distance_stream(self):
+    def _classify_light(
+        self,
+        light: int,
+    ) -> str:
+        if light < 100:
+            return "DARK"
+
+        if light < 220:
+            return "DIM"
+
+        return "BRIGHT"
+
+    async def sensor_stream(self):
         while True:
             try:
                 distance = await asyncio.to_thread(
                     self.hardware.get_distance
                 )
 
+                light = await asyncio.to_thread(
+                    self.hardware.get_light
+                )
+
                 timestamp = time.time()
 
-                analysis = self._analyze_motion(
-                    distance,
-                    timestamp,
+                motion_analysis = (
+                    self._analyze_motion(
+                        distance,
+                        timestamp,
+                    )
+                )
+
+                light_state = (
+                    self._classify_light(
+                        light
+                    )
                 )
 
                 yield {
-                    "type": "sensor",
-                    "sensor": "distance",
+                    "type": "sensor_state",
 
                     "data": {
                         "distance_cm":
                             distance,
 
                         "smoothed_distance_cm":
-                            analysis[
+                            motion_analysis[
                                 "smoothed_distance_cm"
                             ],
 
                         "velocity_cm_s":
-                            analysis[
+                            motion_analysis[
                                 "velocity_cm_s"
                             ],
 
                         "motion":
-                            analysis["motion"],
+                            motion_analysis[
+                                "motion"
+                            ],
+
+                        "light":
+                            light,
+
+                        "light_state":
+                            light_state,
                     },
                 }
 
             except Exception as error:
                 yield {
                     "type": "sensor_error",
-                    "sensor": "distance",
                     "error": str(error),
                 }
 

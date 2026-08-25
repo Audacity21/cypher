@@ -2,19 +2,23 @@
 
 // ============================================================
 // CYPHER FIRMWARE
-// Version 0.3.0
+// Version 0.4.0
 // ============================================================
+
+// -------------------------
+// Pins
+// -------------------------
 
 const int TRIG_PIN = 9;
 const int ECHO_PIN = 10;
+const int LDR_PIN = A0;
 
 
 // ============================================================
-// Read Ultrasonic Distance
+// Sensor Helpers
 // ============================================================
 
 float readDistanceCm() {
-
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
 
@@ -23,7 +27,7 @@ float readDistanceCm() {
 
   digitalWrite(TRIG_PIN, LOW);
 
-  long duration = pulseIn(
+  unsigned long duration = pulseIn(
     ECHO_PIN,
     HIGH,
     30000
@@ -37,21 +41,56 @@ float readDistanceCm() {
 }
 
 
+int readLightLevel() {
+  return analogRead(LDR_PIN);
+}
+
+
+// ============================================================
+// Response Helpers
+// ============================================================
+
+void sendError(
+  const char* id,
+  const char* cmd,
+  const char* errorMessage
+) {
+  JsonDocument response;
+
+  response["type"] = "resp";
+
+  if (id != nullptr) {
+    response["id"] = id;
+  }
+
+  if (cmd != nullptr) {
+    response["cmd"] = cmd;
+  }
+
+  response["ok"] = false;
+  response["error"] = errorMessage;
+
+  serializeJson(response, Serial);
+  Serial.println();
+}
+
+
 // ============================================================
 // Setup
 // ============================================================
 
 void setup() {
-
   Serial.begin(115200);
 
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
+  pinMode(LDR_PIN, INPUT);
+
   delay(2000);
 
   Serial.println(
-    "{\"type\":\"ready\",\"firmware\":\"0.3.0\"}"
+    "{\"type\":\"ready\",\"firmware\":\"0.4.0\"}"
   );
 }
 
@@ -81,10 +120,9 @@ void loop() {
   JsonDocument request;
 
   DeserializationError error =
-      deserializeJson(request, input);
+    deserializeJson(request, input);
 
   if (error) {
-
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"invalid_json\"}"
     );
@@ -103,7 +141,7 @@ void loop() {
 
 
   // ----------------------------------------------------------
-  // Validate Fields
+  // Validate Request
   // ----------------------------------------------------------
 
   if (
@@ -111,7 +149,6 @@ void loop() {
     id == nullptr ||
     cmd == nullptr
   ) {
-
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"missing_fields\"}"
     );
@@ -120,7 +157,6 @@ void loop() {
   }
 
   if (strcmp(type, "cmd") != 0) {
-
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"invalid_type\"}"
     );
@@ -130,7 +166,7 @@ void loop() {
 
 
   // ==========================================================
-  // PING
+  // COMMAND: PING
   // ==========================================================
 
   if (strcmp(cmd, "PING") == 0) {
@@ -150,7 +186,7 @@ void loop() {
 
 
   // ==========================================================
-  // GET_DISTANCE
+  // COMMAND: GET_DISTANCE
   // ==========================================================
 
   if (strcmp(cmd, "GET_DISTANCE") == 0) {
@@ -164,12 +200,9 @@ void loop() {
     response["cmd"] = "GET_DISTANCE";
 
     if (distance >= 0) {
-
       response["ok"] = true;
       response["data"]["distance_cm"] = distance;
-
     } else {
-
       response["ok"] = false;
       response["error"] = "no_echo";
     }
@@ -182,17 +215,36 @@ void loop() {
 
 
   // ==========================================================
+  // COMMAND: GET_LIGHT
+  // ==========================================================
+
+  if (strcmp(cmd, "GET_LIGHT") == 0) {
+
+    int lightLevel = readLightLevel();
+
+    JsonDocument response;
+
+    response["type"] = "resp";
+    response["id"] = id;
+    response["cmd"] = "GET_LIGHT";
+    response["ok"] = true;
+
+    response["data"]["light"] = lightLevel;
+
+    serializeJson(response, Serial);
+    Serial.println();
+
+    return;
+  }
+
+
+  // ==========================================================
   // UNKNOWN COMMAND
   // ==========================================================
 
-  JsonDocument response;
-
-  response["type"] = "resp";
-  response["id"] = id;
-  response["cmd"] = cmd;
-  response["ok"] = false;
-  response["error"] = "unknown_command";
-
-  serializeJson(response, Serial);
-  Serial.println();
+  sendError(
+    id,
+    cmd,
+    "unknown_command"
+  );
 }

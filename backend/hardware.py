@@ -16,7 +16,27 @@ class CypherHardware:
 
         if not response.get("ok"):
             raise RuntimeError(
-                response.get("error", "Unknown distance sensor error")
+                response.get(
+                    "error",
+                    "Unknown distance sensor error",
+                )
             )
 
-        return float(response["data"]["distance_cm"])
+        return float(
+            response["data"]["distance_cm"]
+        )
+
+    def get_light(self) -> int:
+        response = self.serial.send_command("GET_LIGHT")
+
+        if not response.get("ok"):
+            raise RuntimeError(
+                response.get(
+                    "error",
+                    "Unknown light sensor error",
+                )
+            )
+
+        return int(
+            response["data"]["light"]
+        )
