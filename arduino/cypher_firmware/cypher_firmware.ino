@@ -3,25 +3,42 @@
 
 // ============================================================
 // CYPHER FIRMWARE
-// Version 0.5.0
+// Version 0.7.0
 // ============================================================
 
-// -------------------------
-// Pins
-// -------------------------
+// ============================================================
+// PIN DEFINITIONS
+// ============================================================
 
+// Ultrasonic
 const int TRIG_PIN = 9;
 const int ECHO_PIN = 10;
+
+// Light
 const int LDR_PIN = A0;
 
+// DHT11
 #define DHT_PIN 7
 #define DHT_TYPE DHT11
 
 DHT dht(DHT_PIN, DHT_TYPE);
 
+// RGB LED
+// Verified physical mapping:
+// RED   -> D6
+// GREEN -> D3
+// BLUE  -> D5
+//
+// LED type:
+// Common cathode
+
+const int RGB_RED_PIN = 3;
+const int RGB_GREEN_PIN = 5;
+const int RGB_BLUE_PIN = 6;
+
 
 // ============================================================
-// Sensor Helpers
+// SENSOR HELPERS
 // ============================================================
 
 float readDistanceCm() {
@@ -71,7 +88,51 @@ bool readClimate(
 
 
 // ============================================================
-// Response Helpers
+// OUTPUT HELPERS
+// ============================================================
+
+void setRgbColor(
+  int red,
+  int green,
+  int blue
+) {
+  red = constrain(
+    red,
+    0,
+    255
+  );
+
+  green = constrain(
+    green,
+    0,
+    255
+  );
+
+  blue = constrain(
+    blue,
+    0,
+    255
+  );
+
+  analogWrite(
+    RGB_RED_PIN,
+    red
+  );
+
+  analogWrite(
+    RGB_GREEN_PIN,
+    green
+  );
+
+  analogWrite(
+    RGB_BLUE_PIN,
+    blue
+  );
+}
+
+
+// ============================================================
+// RESPONSE HELPERS
 // ============================================================
 
 void sendError(
@@ -94,35 +155,89 @@ void sendError(
   response["ok"] = false;
   response["error"] = errorMessage;
 
-  serializeJson(response, Serial);
+  serializeJson(
+    response,
+    Serial
+  );
+
   Serial.println();
 }
 
 
 // ============================================================
-// Setup
+// SETUP
 // ============================================================
 
 void setup() {
   Serial.begin(115200);
 
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
+  // -------------------------
+  // Ultrasonic
+  // -------------------------
 
-  pinMode(LDR_PIN, INPUT);
+  pinMode(
+    TRIG_PIN,
+    OUTPUT
+  );
+
+  pinMode(
+    ECHO_PIN,
+    INPUT
+  );
+
+  // -------------------------
+  // LDR
+  // -------------------------
+
+  pinMode(
+    LDR_PIN,
+    INPUT
+  );
+
+  // -------------------------
+  // DHT11
+  // -------------------------
 
   dht.begin();
 
+  // -------------------------
+  // RGB LED
+  // -------------------------
+
+  pinMode(
+    RGB_RED_PIN,
+    OUTPUT
+  );
+
+  pinMode(
+    RGB_GREEN_PIN,
+    OUTPUT
+  );
+
+  pinMode(
+    RGB_BLUE_PIN,
+    OUTPUT
+  );
+
+  // Start RGB off
+  setRgbColor(
+    0,
+    0,
+    0
+  );
+
+  // Allow board / sensors
+  // to settle.
   delay(2000);
 
   Serial.println(
-    "{\"type\":\"ready\",\"firmware\":\"0.5.0\"}"
+    "{\"type\":\"ready\",\"firmware\":\"0.7.0\"}"
   );
 }
 
 
 // ============================================================
-// Main Loop
+// MAIN LOOP
 // ============================================================
 
 void loop() {
@@ -136,14 +251,16 @@ void loop() {
 
   input.trim();
 
-  if (input.length() == 0) {
+  if (
+    input.length() == 0
+  ) {
     return;
   }
 
 
-  // ----------------------------------------------------------
-  // Parse JSON
-  // ----------------------------------------------------------
+  // ==========================================================
+  // PARSE JSON
+  // ==========================================================
 
   JsonDocument request;
 
@@ -162,9 +279,9 @@ void loop() {
   }
 
 
-  // ----------------------------------------------------------
-  // Extract Fields
-  // ----------------------------------------------------------
+  // ==========================================================
+  // EXTRACT REQUIRED FIELDS
+  // ==========================================================
 
   const char* type =
     request["type"];
@@ -176,9 +293,9 @@ void loop() {
     request["cmd"];
 
 
-  // ----------------------------------------------------------
-  // Validate Request
-  // ----------------------------------------------------------
+  // ==========================================================
+  // VALIDATE REQUEST
+  // ==========================================================
 
   if (
     type == nullptr ||
@@ -193,7 +310,10 @@ void loop() {
   }
 
   if (
-    strcmp(type, "cmd") != 0
+    strcmp(
+      type,
+      "cmd"
+    ) != 0
   ) {
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"invalid_type\"}"
@@ -208,7 +328,10 @@ void loop() {
   // ==========================================================
 
   if (
-    strcmp(cmd, "PING") == 0
+    strcmp(
+      cmd,
+      "PING"
+    ) == 0
   ) {
     JsonDocument response;
 
@@ -248,13 +371,16 @@ void loop() {
     response["cmd"] =
       "GET_DISTANCE";
 
-    if (distance >= 0) {
+    if (
+      distance >= 0
+    ) {
       response["ok"] = true;
 
       response["data"]
               ["distance_cm"] =
         distance;
-    } else {
+    }
+    else {
       response["ok"] = false;
 
       response["error"] =
@@ -456,6 +582,109 @@ void loop() {
     response["data"]
             ["humidity_percent"] =
       humidity;
+
+    serializeJson(
+      response,
+      Serial
+    );
+
+    Serial.println();
+
+    return;
+  }
+
+
+  // ==========================================================
+  // COMMAND: SET_RGB
+  // ==========================================================
+
+  if (
+    strcmp(
+      cmd,
+      "SET_RGB"
+    ) == 0
+  ) {
+    if (
+      !request["args"].is<JsonObject>()
+    ) {
+      sendError(
+        id,
+        cmd,
+        "missing_args"
+      );
+
+      return;
+    }
+
+    JsonObject args =
+      request["args"];
+
+    if (
+      !args["r"].is<int>() ||
+      !args["g"].is<int>() ||
+      !args["b"].is<int>()
+    ) {
+      sendError(
+        id,
+        cmd,
+        "invalid_rgb"
+      );
+
+      return;
+    }
+
+    int red =
+      args["r"];
+
+    int green =
+      args["g"];
+
+    int blue =
+      args["b"];
+
+
+    // Arduino-side safety validation.
+    if (
+      red < 0 ||
+      red > 255 ||
+      green < 0 ||
+      green > 255 ||
+      blue < 0 ||
+      blue > 255
+    ) {
+      sendError(
+        id,
+        cmd,
+        "rgb_out_of_range"
+      );
+
+      return;
+    }
+
+
+    setRgbColor(
+      red,
+      green,
+      blue
+    );
+
+
+    JsonDocument response;
+
+    response["type"] = "resp";
+    response["id"] = id;
+    response["cmd"] =
+      "SET_RGB";
+    response["ok"] = true;
+
+    response["data"]["r"] =
+      red;
+
+    response["data"]["g"] =
+      green;
+
+    response["data"]["b"] =
+      blue;
 
     serializeJson(
       response,

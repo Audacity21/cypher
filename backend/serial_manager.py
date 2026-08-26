@@ -28,7 +28,9 @@ class SerialManager:
         self.event_queue = queue.Queue()
 
     def connect(self):
-        print(f"Connecting to Cypher hardware on {self.port}...")
+        print(
+            f"Connecting to Cypher hardware on {self.port}..."
+        )
 
         self.connection = serial.Serial(
             port=self.port,
@@ -44,6 +46,7 @@ class SerialManager:
             target=self._reader_loop,
             daemon=True,
         )
+
         self.reader_thread.start()
 
         print("Cypher hardware connected.")
@@ -52,23 +55,45 @@ class SerialManager:
         self.running = False
 
         if self.reader_thread:
-            self.reader_thread.join(timeout=1)
+            self.reader_thread.join(
+                timeout=1
+            )
 
-        if self.connection and self.connection.is_open:
+        if (
+            self.connection
+            and self.connection.is_open
+        ):
             self.connection.close()
 
-        print("Cypher hardware disconnected.")
+        print(
+            "Cypher hardware disconnected."
+        )
 
-    def send_command(self, command: str, args=None):
-        if not self.connection or not self.connection.is_open:
-            raise RuntimeError("Arduino is not connected.")
+    def send_command(
+        self,
+        command: str,
+        args: dict | None = None,
+    ):
+        if (
+            not self.connection
+            or not self.connection.is_open
+        ):
+            raise RuntimeError(
+                "Arduino is not connected."
+            )
 
-        command_id = str(uuid.uuid4())
+        command_id = str(
+            uuid.uuid4()
+        )
 
-        response_queue = queue.Queue(maxsize=1)
+        response_queue = queue.Queue(
+            maxsize=1
+        )
 
         with self.pending_lock:
-            self.pending_responses[command_id] = response_queue
+            self.pending_responses[
+                command_id
+            ] = response_queue
 
         message = {
             "type": "cmd",
@@ -85,12 +110,16 @@ class SerialManager:
         ) + "\n"
 
         self.connection.write(
-            serialized.encode("utf-8")
+            serialized.encode(
+                "utf-8"
+            )
         )
 
         try:
-            response = response_queue.get(
-                timeout=self.timeout
+            response = (
+                response_queue.get(
+                    timeout=self.timeout
+                )
             )
 
             return response
@@ -107,18 +136,24 @@ class SerialManager:
                     None,
                 )
 
-    def get_event(self, timeout=None):
+    def get_event(
+        self,
+        timeout=None,
+    ):
         try:
             return self.event_queue.get(
                 timeout=timeout
             )
+
         except queue.Empty:
             return None
 
     def _reader_loop(self):
         while self.running:
             try:
-                raw = self.connection.readline()
+                raw = (
+                    self.connection.readline()
+                )
 
                 if not raw:
                     continue
@@ -132,7 +167,9 @@ class SerialManager:
                     continue
 
                 try:
-                    message = json.loads(line)
+                    message = json.loads(
+                        line
+                    )
 
                 except json.JSONDecodeError:
                     print(
@@ -140,12 +177,15 @@ class SerialManager:
                     )
                     continue
 
-                self._route_message(message)
+                self._route_message(
+                    message
+                )
 
             except serial.SerialException as error:
                 print(
                     f"Serial error: {error}"
                 )
+
                 self.running = False
 
             except Exception as error:
@@ -153,11 +193,18 @@ class SerialManager:
                     f"Reader error: {error}"
                 )
 
-    def _route_message(self, message):
-        message_type = message.get("type")
+    def _route_message(
+        self,
+        message,
+    ):
+        message_type = (
+            message.get("type")
+        )
 
         if message_type == "resp":
-            command_id = message.get("id")
+            command_id = (
+                message.get("id")
+            )
 
             if not command_id:
                 print(
@@ -173,15 +220,19 @@ class SerialManager:
                 )
 
             if response_queue:
-                response_queue.put(message)
+                response_queue.put(
+                    message
+                )
+
             else:
                 print(
-                    f"Received response for unknown id: "
-                    f"{command_id}"
+                    f"Received response for unknown id: {command_id}"
                 )
 
         elif message_type == "event":
-            self.event_queue.put(message)
+            self.event_queue.put(
+                message
+            )
 
         elif message_type == "ready":
             print(
