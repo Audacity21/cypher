@@ -22,6 +22,25 @@ type SensorMessage = {
 
     humidity_percent?: number;
     humidity_state?: string;
+
+    total?: number;
+    agreements?: number;
+    disagreements?: number;
+    agreement_rate?: number;
+
+    last_authoritative_intent?: string | null;
+    last_shadow_intent?: string | null;
+    last_shadow_confidence?: number | null;
+    last_agreement?: boolean | null;
+  };
+
+  decision?: {
+    intent?: string;
+    reason?: string;
+    confidence?: number;
+    valid?: boolean;
+    agreement?: boolean;
+    model?: string;
   };
 };
 
@@ -70,6 +89,44 @@ function App() {
 
   const [events, setEvents] =
     useState<CypherEvent[]>([]);
+
+  const [shadowTotal, setShadowTotal] =
+    useState(0);
+
+  const [
+    shadowAgreements,
+    setShadowAgreements,
+  ] = useState(0);
+
+  const [
+    shadowDisagreements,
+    setShadowDisagreements,
+  ] = useState(0);
+
+  const [
+    shadowAgreementRate,
+    setShadowAgreementRate,
+  ] = useState(0);
+
+  const [
+    shadowAuthoritative,
+    setShadowAuthoritative,
+  ] = useState<string | null>(null);
+
+  const [
+    shadowIntent,
+    setShadowIntent,
+  ] = useState<string | null>(null);
+
+  const [
+    shadowConfidence,
+    setShadowConfidence,
+  ] = useState<number | null>(null);
+
+  const [
+    shadowAgreement,
+    setShadowAgreement,
+  ] = useState<boolean | null>(null);
 
   useEffect(() => {
     const socket = new WebSocket(
@@ -170,8 +227,7 @@ function App() {
         }
 
         if (
-          data.humidity_percent !==
-          undefined
+          data.humidity_percent !== undefined
         ) {
           setHumidity(
             data.humidity_percent
@@ -179,8 +235,7 @@ function App() {
         }
 
         if (
-          data.humidity_state !==
-          undefined
+          data.humidity_state !== undefined
         ) {
           setHumidityState(
             data.humidity_state
@@ -191,7 +246,7 @@ function App() {
       }
 
       // ----------------------------------
-      // SEMANTIC EVENTS
+      // EVENT STREAM
       // ----------------------------------
 
       if (
@@ -210,6 +265,96 @@ function App() {
             ...previous,
           ].slice(0, 6)
         );
+
+        return;
+      }
+
+      // ----------------------------------
+      // SHADOW METRICS
+      // ----------------------------------
+
+      if (
+        message.type === "shadow_metrics" &&
+        message.data
+      ) {
+        const data = message.data;
+
+        setShadowTotal(
+          data.total ?? 0
+        );
+
+        setShadowAgreements(
+          data.agreements ?? 0
+        );
+
+        setShadowDisagreements(
+          data.disagreements ?? 0
+        );
+
+        setShadowAgreementRate(
+          data.agreement_rate ?? 0
+        );
+
+        setShadowAuthoritative(
+          data.last_authoritative_intent
+          ?? null
+        );
+
+        setShadowIntent(
+          data.last_shadow_intent
+          ?? null
+        );
+
+        setShadowConfidence(
+          data.last_shadow_confidence
+          ?? null
+        );
+
+        setShadowAgreement(
+          data.last_agreement
+          ?? null
+        );
+
+        return;
+      }
+
+      // ----------------------------------
+      // SHADOW DECISION
+      // ----------------------------------
+
+      if (
+        message.type ===
+          "shadow_intelligence" &&
+        message.decision
+      ) {
+        if (
+          message.decision.intent !==
+          undefined
+        ) {
+          setShadowIntent(
+            message.decision.intent
+          );
+        }
+
+        if (
+          message.decision.confidence !==
+          undefined
+        ) {
+          setShadowConfidence(
+            message.decision.confidence
+          );
+        }
+
+        if (
+          message.decision.agreement !==
+          undefined
+        ) {
+          setShadowAgreement(
+            message.decision.agreement
+          );
+        }
+
+        return;
       }
     };
 
@@ -220,6 +365,13 @@ function App() {
 
   const motionClass =
     motion.toLowerCase();
+
+  const agreementClass =
+    shadowAgreement === null
+      ? ""
+      : shadowAgreement
+        ? "ai-agree"
+        : "ai-disagree";
 
   return (
     <main className="app-shell">
@@ -333,7 +485,6 @@ function App() {
 
             <div>
               RANGE LIMIT
-
               <strong>
                 200 CM
               </strong>
@@ -341,17 +492,15 @@ function App() {
 
             <div>
               LIGHT
-
               <strong>
                 {lightState}
               </strong>
             </div>
 
             <div>
-              CLIMATE
-
+              AI SHADOW
               <strong>
-                {temperatureState}
+                {shadowAgreementRate.toFixed(1)}%
               </strong>
             </div>
 
@@ -379,16 +528,6 @@ function App() {
 
           <div className="analysis-row">
             <span>
-              TEMP STATE
-            </span>
-
-            <strong>
-              {temperatureState}
-            </strong>
-          </div>
-
-          <div className="analysis-row">
-            <span>
               HUMIDITY
             </span>
 
@@ -399,13 +538,109 @@ function App() {
             </strong>
           </div>
 
+          <div className="divider" />
+
+          <div className="panel-heading">
+            AI SHADOW // QWEN
+          </div>
+
           <div className="analysis-row">
             <span>
-              HUMIDITY STATE
+              MODE
             </span>
 
             <strong>
-              {humidityState}
+              SHADOW
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              DECISIONS
+            </span>
+
+            <strong>
+              {shadowTotal}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              AGREEMENT
+            </span>
+
+            <strong>
+              {shadowAgreementRate.toFixed(1)}%
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              AGREE / DISAGREE
+            </span>
+
+            <strong>
+              {shadowAgreements}
+              {" / "}
+              {shadowDisagreements}
+            </strong>
+          </div>
+
+          <div className="divider" />
+
+          <div className="panel-heading">
+            LAST DECISION
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              RULE ENGINE
+            </span>
+
+            <strong>
+              {shadowAuthoritative ?? "---"}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              QWEN
+            </span>
+
+            <strong>
+              {shadowIntent ?? "---"}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              CONFIDENCE
+            </span>
+
+            <strong>
+              {shadowConfidence !== null
+                ? `${(
+                    shadowConfidence * 100
+                  ).toFixed(0)}%`
+                : "---"}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              RESULT
+            </span>
+
+            <strong
+              className={
+                agreementClass
+              }
+            >
+              {shadowAgreement === null
+                ? "---"
+                : shadowAgreement
+                  ? "AGREE"
+                  : "DISAGREE"}
             </strong>
           </div>
 
@@ -448,46 +683,6 @@ function App() {
 
           </div>
 
-          <div className="divider" />
-
-          <div className="panel-heading">
-            SYSTEM
-          </div>
-
-          <SystemRow
-            name="ARDUINO"
-            online={connected}
-          />
-
-          <SystemRow
-            name="ULTRASONIC"
-            online={distance !== null}
-          />
-
-          <SystemRow
-            name="LIGHT SENSOR"
-            online={light !== null}
-          />
-
-          <SystemRow
-            name="DHT11"
-            online={
-              temperature !== null &&
-              humidity !== null
-            }
-          />
-
-          <SystemRow
-            name="EVENT ENGINE"
-            online={connected}
-          />
-
-          <SystemRow
-            name="AI CORE"
-            online={false}
-            text="PENDING"
-          />
-
         </aside>
 
       </section>
@@ -495,19 +690,19 @@ function App() {
       <footer className="bottom-bar">
 
         <div>
-          CYPHER // PERCEPTION CORE
+          CYPHER // INTELLIGENCE CORE
         </div>
 
         <div className="bottom-center">
           <span />
 
-          WORLD STATE + EVENTS
+          QWEN SHADOW EVALUATION
 
           <span />
         </div>
 
         <div>
-          BUILD 0.6
+          BUILD 0.8
         </div>
 
       </footer>
@@ -534,11 +729,10 @@ function formatTime(
 function formatEventName(
   event: string
 ) {
-  return event
-    .replaceAll(
-      "_",
-      " "
-    );
+  return event.replaceAll(
+    "_",
+    " "
+  );
 }
 
 type PanelBlockProps = {
@@ -574,41 +768,6 @@ function PanelBlock({
           </span>
         )}
       </div>
-
-    </div>
-  );
-}
-
-function SystemRow({
-  name,
-  online,
-  text,
-}: {
-  name: string;
-  online: boolean;
-  text?: string;
-}) {
-  return (
-    <div className="system-row">
-
-      <span>
-        {name}
-      </span>
-
-      <strong
-        className={
-          online
-            ? "system-ok"
-            : "system-pending"
-        }
-      >
-        {text ??
-          (
-            online
-              ? "ONLINE"
-              : "OFFLINE"
-          )}
-      </strong>
 
     </div>
   );

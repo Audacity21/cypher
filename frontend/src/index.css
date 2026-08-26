@@ -793,3 +793,23 @@ body {
 
   color: #496774;
 }
+
+/* =========================================================
+   AI SHADOW TELEMETRY
+   ========================================================= */
+
+.ai-agree {
+  color: #67ebc6 !important;
+
+  text-shadow:
+    0 0 10px
+    rgba(103, 235, 198, 0.25);
+}
+
+.ai-disagree {
+  color: #ff8d9d !important;
+
+  text-shadow:
+    0 0 10px
+    rgba(255, 141, 157, 0.2);
+}

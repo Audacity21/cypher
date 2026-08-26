@@ -15,6 +15,7 @@ from backend.hardware import CypherHardware
 from backend.intelligence_engine import IntelligenceEngine
 from backend.ollama_intelligence import OllamaIntelligence
 from backend.sensor_stream import SensorStream
+from backend.shadow_metrics import ShadowMetrics
 from backend.world_state_manager import WorldStateManager
 
 
@@ -49,9 +50,10 @@ event_engine = EventEngine()
 intelligence_engine = IntelligenceEngine()
 
 # Local Qwen model runs in shadow mode.
-# It observes the same event + world state,
-# but its decisions NEVER control hardware yet.
 shadow_intelligence = OllamaIntelligence()
+
+# Tracks how often Qwen agrees with the deterministic engine.
+shadow_metrics = ShadowMetrics()
 
 
 # ============================================================
@@ -160,6 +162,11 @@ async def get_action_status():
         "status":
             action_engine.get_status()
     }
+
+
+@app.get("/intelligence/shadow")
+async def get_shadow_metrics():
+    return shadow_metrics.to_dict()
 
 
 # ============================================================
@@ -302,7 +309,6 @@ async def websocket_sensors(
                         },
                     )
 
-
                     await websocket.send_json(
                         {
                             "type":
@@ -352,6 +358,17 @@ async def websocket_sensors(
                             == shadow_decision.intent
                         )
 
+                        shadow_metrics.record(
+                            authoritative_intent=
+                                decision.intent,
+
+                            shadow_intent=
+                                shadow_decision.intent,
+
+                            shadow_confidence=
+                                shadow_decision.confidence,
+                        )
+
                         print(
                             "[CYPHER SHADOW]",
                             {
@@ -372,6 +389,10 @@ async def websocket_sensors(
                             },
                         )
 
+                        print(
+                            "[CYPHER SHADOW METRICS]",
+                            shadow_metrics.to_dict(),
+                        )
 
                         await websocket.send_json(
                             {
@@ -400,9 +421,18 @@ async def websocket_sensors(
                             }
                         )
 
+                        await websocket.send_json(
+                            {
+                                "type":
+                                    "shadow_metrics",
+
+                                "data":
+                                    shadow_metrics.to_dict(),
+                            }
+                        )
+
+
                     except Exception as error:
-                        # Shadow intelligence can fail without
-                        # disturbing Cypher's normal control loop.
                         print(
                             "[CYPHER SHADOW ERROR]",
                             error,
@@ -441,11 +471,8 @@ async def websocket_sensors(
                     # =========================================
                     # BEHAVIOR ENGINE
                     #
-                    # IMPORTANT:
-                    # ONLY THE DETERMINISTIC DECISION
-                    # REACHES THIS POINT.
-                    #
-                    # SHADOW QWEN DOES NOT CONTROL HARDWARE.
+                    # Only the deterministic decision reaches
+                    # this point.
                     # =========================================
 
                     action_result = (
