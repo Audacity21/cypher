@@ -1,6 +1,6 @@
 import time
 
-from backend.hardware import CypherHardware
+from backend.hardware.hardware import CypherHardware
 
 
 cypher = CypherHardware(

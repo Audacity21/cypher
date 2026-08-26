@@ -8,16 +8,16 @@ from fastapi import (
     WebSocketDisconnect,
 )
 
-from backend.action_engine import ActionEngine
-from backend.behavior_engine import BehaviorEngine
-from backend.event_engine import EventEngine
-from backend.hardware import CypherHardware
-from backend.intelligence_engine import IntelligenceEngine
-from backend.intelligence_guard import IntelligenceGuard
-from backend.ollama_intelligence import OllamaIntelligence
-from backend.sensor_stream import SensorStream
-from backend.shadow_metrics import ShadowMetrics
-from backend.world_state_manager import WorldStateManager
+from backend.actions.action_engine import ActionEngine
+from backend.actions.behavior_engine import BehaviorEngine
+from backend.perception.event_engine import EventEngine
+from backend.hardware.hardware import CypherHardware
+from backend.intelligence.intelligence_engine import IntelligenceEngine
+from backend.intelligence.intelligence_guard import IntelligenceGuard
+from backend.intelligence.ollama_intelligence import OllamaIntelligence
+from backend.perception.sensor_stream import SensorStream
+from backend.intelligence.shadow_metrics import ShadowMetrics
+from backend.perception.world_state_manager import WorldStateManager
 
 
 # ============================================================

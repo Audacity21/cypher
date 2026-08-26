@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from backend.intelligence_engine import IntelligenceDecision
+from backend.intelligence.intelligence_engine import IntelligenceDecision
 
 
 @dataclass

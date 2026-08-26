@@ -1,7 +1,7 @@
 import time
 
-from backend.action_engine import ActionEngine
-from backend.hardware import CypherHardware
+from backend.actions.action_engine import ActionEngine
+from backend.hardware.hardware import CypherHardware
 
 
 hardware = CypherHardware(

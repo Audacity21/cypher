@@ -2,7 +2,7 @@ import asyncio
 import time
 from collections import deque
 
-from backend.hardware import CypherHardware
+from backend.hardware.hardware import CypherHardware
 
 
 class SensorStream:

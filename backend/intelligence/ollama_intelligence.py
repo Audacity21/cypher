@@ -1,8 +1,8 @@
-from backend.intelligence_engine import (
+from backend.intelligence.intelligence_engine import (
     IntelligenceDecision,
 )
 
-from backend.llm_provider import (
+from backend.intelligence.llm_provider import (
     OllamaProvider,
 )
 

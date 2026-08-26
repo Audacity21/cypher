@@ -1,5 +1,5 @@
-from backend.action_engine import ActionEngine
-from backend.intelligence_engine import IntelligenceDecision
+from backend.actions.action_engine import ActionEngine
+from backend.intelligence.intelligence_engine import IntelligenceDecision
 
 
 class BehaviorEngine:

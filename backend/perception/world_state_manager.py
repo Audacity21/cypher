@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from backend.world_state import WorldState
+from backend.perception.world_state import WorldState
 
 
 class WorldStateManager:

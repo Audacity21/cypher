@@ -1,8 +1,8 @@
-from backend.intelligence_engine import (
+from backend.intelligence.intelligence_engine import (
     IntelligenceDecision,
 )
 
-from backend.intelligence_guard import (
+from backend.intelligence.intelligence_guard import (
     IntelligenceGuard,
 )
 

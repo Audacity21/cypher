@@ -1,4 +1,4 @@
-from backend.intelligence_engine import (
+from backend.intelligence.intelligence_engine import (
     IntelligenceEngine,
 )
 

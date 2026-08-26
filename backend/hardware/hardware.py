@@ -1,4 +1,4 @@
-from backend.serial_manager import SerialManager
+from backend.hardware.serial_manager import SerialManager
 
 
 class CypherHardware:

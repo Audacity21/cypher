@@ -1,4 +1,4 @@
-from backend.llm_provider import OllamaProvider
+from backend.intelligence.llm_provider import OllamaProvider
 
 
 llm = OllamaProvider(
