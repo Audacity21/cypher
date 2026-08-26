@@ -13,6 +13,7 @@ from backend.behavior_engine import BehaviorEngine
 from backend.event_engine import EventEngine
 from backend.hardware import CypherHardware
 from backend.intelligence_engine import IntelligenceEngine
+from backend.intelligence_guard import IntelligenceGuard
 from backend.ollama_intelligence import OllamaIntelligence
 from backend.sensor_stream import SensorStream
 from backend.shadow_metrics import ShadowMetrics
@@ -49,10 +50,15 @@ event_engine = EventEngine()
 # Deterministic intelligence remains authoritative.
 intelligence_engine = IntelligenceEngine()
 
-# Local Qwen model runs in shadow mode.
+# Qwen remains shadow-only.
 shadow_intelligence = OllamaIntelligence()
 
-# Tracks how often Qwen agrees with the deterministic engine.
+# Safety gate for LLM decisions.
+intelligence_guard = IntelligenceGuard(
+    minimum_confidence=0.70
+)
+
+# Evaluation telemetry.
 shadow_metrics = ShadowMetrics()
 
 
@@ -70,7 +76,7 @@ behavior_engine = BehaviorEngine(
 
 
 # ============================================================
-# APP LIFESPAN
+# LIFESPAN
 # ============================================================
 
 @asynccontextmanager
@@ -132,7 +138,7 @@ app = FastAPI(
 
 
 # ============================================================
-# HTTP ENDPOINTS
+# HTTP
 # ============================================================
 
 @app.get("/")
@@ -141,11 +147,15 @@ async def root():
         "name": "CYPHER",
         "status": "online",
         "architecture":
-            "intelligence-shadow-v1",
+            "guarded-shadow-v1",
         "llm":
             "qwen2.5:1.5b",
         "llm_mode":
             "shadow",
+        "guard":
+            "enabled",
+        "minimum_confidence":
+            intelligence_guard.minimum_confidence,
     }
 
 
@@ -170,7 +180,7 @@ async def get_shadow_metrics():
 
 
 # ============================================================
-# SENSOR WEBSOCKET
+# WEBSOCKET
 # ============================================================
 
 @app.websocket("/ws/sensors")
@@ -189,13 +199,11 @@ async def websocket_sensors(
         ):
 
             # =================================================
-            # SENSOR ERROR / OTHER MESSAGE
+            # NON-WORLD-STATE MESSAGE
             # =================================================
 
             if (
-                sensor_message.get(
-                    "type"
-                )
+                sensor_message.get("type")
                 != "sensor_state"
             ):
                 await websocket.send_json(
@@ -206,7 +214,7 @@ async def websocket_sensors(
 
 
             # =================================================
-            # WORLD STATE UPDATE
+            # WORLD STATE
             # =================================================
 
             sensor_data = (
@@ -229,7 +237,7 @@ async def websocket_sensors(
 
 
             # =================================================
-            # EVENT ENGINE
+            # EVENTS
             # =================================================
 
             events = (
@@ -239,10 +247,6 @@ async def websocket_sensors(
                 )
             )
 
-
-            # =================================================
-            # SEND WORLD STATE TO UI
-            # =================================================
 
             await websocket.send_json(
                 {
@@ -256,7 +260,7 @@ async def websocket_sensors(
 
 
             # =================================================
-            # PROCESS EVENTS
+            # EVENT PIPELINE
             # =================================================
 
             for event in events:
@@ -273,7 +277,7 @@ async def websocket_sensors(
 
 
                 # =============================================
-                # AUTHORITATIVE INTELLIGENCE
+                # AUTHORITATIVE DETERMINISTIC INTELLIGENCE
                 # =============================================
 
                 try:
@@ -335,7 +339,7 @@ async def websocket_sensors(
 
 
                     # =========================================
-                    # SHADOW QWEN INTELLIGENCE
+                    # SHADOW QWEN
                     # =========================================
 
                     try:
@@ -347,16 +351,31 @@ async def websocket_sensors(
                             )
                         )
 
-                        shadow_valid = (
-                            shadow_intelligence.validate(
+
+                        # -------------------------------------
+                        # GUARD
+                        # -------------------------------------
+
+                        guard_result = (
+                            intelligence_guard.evaluate(
                                 shadow_decision
                             )
                         )
+
+
+                        # -------------------------------------
+                        # AGREEMENT
+                        # -------------------------------------
 
                         agreement = (
                             decision.intent
                             == shadow_decision.intent
                         )
+
+
+                        # -------------------------------------
+                        # METRICS
+                        # -------------------------------------
 
                         shadow_metrics.record(
                             authoritative_intent=
@@ -367,7 +386,18 @@ async def websocket_sensors(
 
                             shadow_confidence=
                                 shadow_decision.confidence,
+
+                            guard_allowed=
+                                guard_result.allowed,
+
+                            guard_reason=
+                                guard_result.reason,
                         )
+
+
+                        # -------------------------------------
+                        # LOG SHADOW DECISION
+                        # -------------------------------------
 
                         print(
                             "[CYPHER SHADOW]",
@@ -381,18 +411,37 @@ async def websocket_sensors(
                                 "confidence":
                                     shadow_decision.confidence,
 
-                                "valid":
-                                    shadow_valid,
-
                                 "agreement":
                                     agreement,
                             },
                         )
 
+
+                        # -------------------------------------
+                        # LOG GUARD
+                        # -------------------------------------
+
+                        print(
+                            "[CYPHER GUARD]",
+                            {
+                                "allowed":
+                                    guard_result.allowed,
+
+                                "reason":
+                                    guard_result.reason,
+                            },
+                        )
+
+
                         print(
                             "[CYPHER SHADOW METRICS]",
                             shadow_metrics.to_dict(),
                         )
+
+
+                        # -------------------------------------
+                        # SEND SHADOW DECISION
+                        # -------------------------------------
 
                         await websocket.send_json(
                             {
@@ -409,17 +458,25 @@ async def websocket_sensors(
                                     "confidence":
                                         shadow_decision.confidence,
 
-                                    "valid":
-                                        shadow_valid,
-
                                     "agreement":
                                         agreement,
 
                                     "model":
                                         "qwen2.5:1.5b",
+
+                                    "guard_allowed":
+                                        guard_result.allowed,
+
+                                    "guard_reason":
+                                        guard_result.reason,
                                 },
                             }
                         )
+
+
+                        # -------------------------------------
+                        # SEND METRICS
+                        # -------------------------------------
 
                         await websocket.send_json(
                             {
@@ -432,7 +489,17 @@ async def websocket_sensors(
                         )
 
 
+                        # IMPORTANT:
+                        #
+                        # Even if guard_result.allowed is True,
+                        # shadow_decision DOES NOT go to the
+                        # BehaviorEngine.
+                        #
+                        # Qwen still has ZERO hardware authority.
+
+
                     except Exception as error:
+
                         print(
                             "[CYPHER SHADOW ERROR]",
                             error,
@@ -450,10 +517,11 @@ async def websocket_sensors(
 
 
                     # =========================================
-                    # AUTHORITY VALIDATION GATE
+                    # AUTHORITATIVE VALIDATION
                     # =========================================
 
                     if not valid:
+
                         print(
                             "[CYPHER INTELLIGENCE BLOCKED]",
                             {
@@ -469,10 +537,10 @@ async def websocket_sensors(
 
 
                     # =========================================
-                    # BEHAVIOR ENGINE
+                    # BEHAVIOR
                     #
-                    # Only the deterministic decision reaches
-                    # this point.
+                    # ONLY deterministic intelligence
+                    # controls this.
                     # =========================================
 
                     action_result = (
@@ -484,10 +552,11 @@ async def websocket_sensors(
 
 
                     # =========================================
-                    # ACTION RESULT
+                    # ACTION
                     # =========================================
 
                     if action_result:
+
                         print(
                             "[CYPHER ACTION]",
                             action_result,
@@ -505,6 +574,7 @@ async def websocket_sensors(
 
 
                 except Exception as error:
+
                     print(
                         "[CYPHER INTELLIGENCE ERROR]",
                         error,
@@ -522,12 +592,14 @@ async def websocket_sensors(
 
 
     except WebSocketDisconnect:
+
         print(
             "Cypher UI disconnected."
         )
 
 
     except Exception as error:
+
         print(
             f"WebSocket error: {error}"
         )

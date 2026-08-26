@@ -1,16 +1,13 @@
-from backend.intelligence_engine import IntelligenceDecision
-from backend.llm_provider import OllamaProvider
+from backend.intelligence_engine import (
+    IntelligenceDecision,
+)
+
+from backend.llm_provider import (
+    OllamaProvider,
+)
 
 
 class OllamaIntelligence:
-    """
-    LLM-backed Cypher intelligence.
-
-    SHADOW MODE:
-    Decisions produced here are observed and logged,
-    but are NOT allowed to control hardware yet.
-    """
-
     ALLOWED_INTENTS = {
         "NONE",
         "IDLE",
@@ -46,106 +43,69 @@ class OllamaIntelligence:
 You are the reasoning engine inside Cypher,
 a local physical AI companion.
 
-Your job is NOT to decide whether something is dangerous.
+Choose exactly ONE semantic intent.
 
-Your job is to choose the semantic state that best represents
-how Cypher should respond to the event.
-
-You MUST choose exactly one allowed intent.
-
-============================================================
-INTENTS
-============================================================
+INTENTS:
 
 PRESENCE
-Use when something enters Cypher's nearby interaction range.
-This does NOT mean danger.
-It means Cypher acknowledges that something is nearby.
+Something entered Cypher's nearby interaction range.
 
 IDLE
-Use when Cypher should return to its normal resting state.
-Examples:
-- an object leaves interaction range
-- lighting returns after darkness
+Return to Cypher's normal resting state.
 
 DARK
-Use when the environment transitions into darkness.
+The environment transitioned into darkness.
 
 ALERT
-Use only when an event genuinely requires attention or warning.
+Something genuinely requires attention.
 
 SUCCESS
-Use when an operation successfully completes.
+An operation completed successfully.
 
 THINKING
-Use when Cypher is actively processing a request.
+Cypher is actively processing a request.
 
 NONE
-Use only when the event does not justify ANY change
-in Cypher's semantic state.
+No semantic state change is appropriate.
 
-============================================================
-IMPORTANT EVENT INTERPRETATION
-============================================================
+IMPORTANT INTERPRETATION:
 
-OBJECT_ENTERED_RANGE
-normally means PRESENCE.
+OBJECT_ENTERED_RANGE -> normally PRESENCE
+OBJECT_LEFT_RANGE -> normally IDLE
+LIGHTS_WENT_OFF -> normally DARK
+LIGHTS_CAME_ON -> normally IDLE
 
-OBJECT_LEFT_RANGE
-normally means IDLE.
+OBJECT_STARTED_APPROACHING ->
+usually NONE unless context makes it important.
 
-LIGHTS_WENT_OFF
-normally means DARK.
+OBJECT_STARTED_RECEDING ->
+usually NONE unless context makes it important.
 
-LIGHTS_CAME_ON
-normally means IDLE.
+RULES:
 
-OBJECT_STARTED_APPROACHING
-usually means NONE unless other context makes it important.
-
-OBJECT_STARTED_RECEDING
-usually means NONE unless other context makes it important.
-
-These are semantic states, not danger classifications.
-
-============================================================
-RULES
-============================================================
-
-- Only choose from the allowed intents.
-- Never control hardware directly.
-- Do not invent facts.
-- Use both the event and world state.
-- Keep the reason to one short sentence.
-- confidence must be from 0 to 1.
+- Choose only an allowed intent.
+- Never invent sensor information.
+- Never describe or request Arduino pins.
+- Never issue hardware commands.
+- confidence must be between 0 and 1.
+- reason must be one short sentence.
 - Return JSON only.
 
-============================================================
-CURRENT EVENT
-============================================================
-
-Event:
+EVENT:
 {event_name}
 
-Event data:
+EVENT DATA:
 {event_data}
 
-============================================================
-CURRENT WORLD STATE
-============================================================
-
+WORLD STATE:
 {world_state}
-
-============================================================
-OUTPUT
-============================================================
 
 Return exactly:
 
 {{
   "intent": "<intent>",
-  "reason": "<one short sentence>",
-  "confidence": <number between 0 and 1>
+  "reason": "<short reason>",
+  "confidence": <number>
 }}
 """
 
@@ -153,61 +113,66 @@ Return exactly:
             prompt
         )
 
-        intent = str(
-            result.get(
-                "intent",
-                "NONE",
-            )
-        ).upper()
+        required_fields = {
+            "intent",
+            "reason",
+            "confidence",
+        }
 
-        reason = str(
-            result.get(
-                "reason",
-                "No reason provided.",
-            )
+        missing = (
+            required_fields
+            - result.keys()
         )
 
-        try:
-            confidence = float(
-                result.get(
-                    "confidence",
-                    0.0,
-                )
+        if missing:
+            raise ValueError(
+                f"Missing LLM fields: "
+                f"{sorted(missing)}"
             )
 
-        except (
-            TypeError,
-            ValueError,
+        intent = result["intent"]
+
+        reason = result["reason"]
+
+        confidence = result[
+            "confidence"
+        ]
+
+        if not isinstance(
+            intent,
+            str,
         ):
-            confidence = 0.0
+            raise ValueError(
+                "LLM intent must be a string"
+            )
+
+        if not isinstance(
+            reason,
+            str,
+        ):
+            raise ValueError(
+                "LLM reason must be a string"
+            )
+
+        if not isinstance(
+            confidence,
+            (int, float),
+        ):
+            raise ValueError(
+                "LLM confidence must be numeric"
+            )
 
         return IntelligenceDecision(
-            intent=intent,
+            intent=intent.upper(),
             reason=reason,
-            confidence=confidence,
+            confidence=float(
+                confidence
+            ),
             metadata={
                 "provider": "ollama",
-                "model": "qwen2.5:1.5b",
-                "mode": "shadow",
+                "model":
+                    "qwen2.5:1.5b",
+                "mode":
+                    "shadow",
             },
         )
-
-    def validate(
-        self,
-        decision: IntelligenceDecision,
-    ) -> bool:
-
-        if (
-            decision.intent
-            not in self.ALLOWED_INTENTS
-        ):
-            return False
-
-        if not (
-            0.0
-            <= decision.confidence
-            <= 1.0
-        ):
-            return False
-
-        return True
