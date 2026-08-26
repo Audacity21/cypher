@@ -4,6 +4,8 @@ import Radar from "./Radar";
 
 type SensorMessage = {
   type: string;
+  event?: string;
+  timestamp?: number;
 
   data?: {
     distance_cm?: number;
@@ -11,7 +13,7 @@ type SensorMessage = {
     velocity_cm_s?: number;
     motion?: string;
 
-    light?: number;
+    light_raw?: number;
     light_percent?: number;
     light_state?: string;
 
@@ -21,6 +23,11 @@ type SensorMessage = {
     humidity_percent?: number;
     humidity_state?: string;
   };
+};
+
+type CypherEvent = {
+  event: string;
+  timestamp: number;
 };
 
 function App() {
@@ -61,6 +68,9 @@ function App() {
   const [connected, setConnected] =
     useState(false);
 
+  const [events, setEvents] =
+    useState<CypherEvent[]>([]);
+
   useEffect(() => {
     const socket = new WebSocket(
       "ws://127.0.0.1:8000/ws/sensors"
@@ -82,94 +92,123 @@ function App() {
       const message: SensorMessage =
         JSON.parse(event.data);
 
+      // ----------------------------------
+      // WORLD STATE
+      // ----------------------------------
+
       if (
-        message.type !== "sensor_state" ||
-        !message.data
+        message.type === "world_state" &&
+        message.data
       ) {
+        const data = message.data;
+
+        if (
+          data.smoothed_distance_cm !==
+          undefined
+        ) {
+          setDistance(
+            data.smoothed_distance_cm
+          );
+        }
+
+        if (
+          data.velocity_cm_s !==
+          undefined
+        ) {
+          setVelocity(
+            data.velocity_cm_s
+          );
+        }
+
+        if (
+          data.motion !== undefined
+        ) {
+          setMotion(
+            data.motion
+          );
+        }
+
+        if (
+          data.light_raw !== undefined
+        ) {
+          setLight(
+            data.light_raw
+          );
+        }
+
+        if (
+          data.light_percent !== undefined
+        ) {
+          setLightPercent(
+            data.light_percent
+          );
+        }
+
+        if (
+          data.light_state !== undefined
+        ) {
+          setLightState(
+            data.light_state
+          );
+        }
+
+        if (
+          data.temperature_c !== undefined
+        ) {
+          setTemperature(
+            data.temperature_c
+          );
+        }
+
+        if (
+          data.temperature_state !==
+          undefined
+        ) {
+          setTemperatureState(
+            data.temperature_state
+          );
+        }
+
+        if (
+          data.humidity_percent !==
+          undefined
+        ) {
+          setHumidity(
+            data.humidity_percent
+          );
+        }
+
+        if (
+          data.humidity_state !==
+          undefined
+        ) {
+          setHumidityState(
+            data.humidity_state
+          );
+        }
+
         return;
       }
 
-      const data = message.data;
+      // ----------------------------------
+      // SEMANTIC EVENTS
+      // ----------------------------------
 
       if (
-        data.smoothed_distance_cm !==
-        undefined
+        message.type === "event" &&
+        message.event &&
+        message.timestamp
       ) {
-        setDistance(
-          data.smoothed_distance_cm
-        );
-      }
+        const newEvent: CypherEvent = {
+          event: message.event,
+          timestamp: message.timestamp,
+        };
 
-      if (
-        data.velocity_cm_s !== undefined
-      ) {
-        setVelocity(
-          data.velocity_cm_s
-        );
-      }
-
-      if (
-        data.motion !== undefined
-      ) {
-        setMotion(
-          data.motion
-        );
-      }
-
-      if (
-        data.light !== undefined
-      ) {
-        setLight(
-          data.light
-        );
-      }
-
-      if (
-        data.light_percent !== undefined
-      ) {
-        setLightPercent(
-          data.light_percent
-        );
-      }
-
-      if (
-        data.light_state !== undefined
-      ) {
-        setLightState(
-          data.light_state
-        );
-      }
-
-      if (
-        data.temperature_c !== undefined
-      ) {
-        setTemperature(
-          data.temperature_c
-        );
-      }
-
-      if (
-        data.temperature_state !==
-        undefined
-      ) {
-        setTemperatureState(
-          data.temperature_state
-        );
-      }
-
-      if (
-        data.humidity_percent !== undefined
-      ) {
-        setHumidity(
-          data.humidity_percent
-        );
-      }
-
-      if (
-        data.humidity_state !== undefined
-      ) {
-        setHumidityState(
-          data.humidity_state
+        setEvents(
+          (previous) => [
+            newEvent,
+            ...previous,
+          ].slice(0, 6)
         );
       }
     };
@@ -373,39 +412,40 @@ function App() {
           <div className="divider" />
 
           <div className="panel-heading">
-            TRACK ANALYSIS
+            LIVE EVENT STREAM
           </div>
 
-          <div className="analysis-row">
-            <span>
-              TARGET
-            </span>
+          <div className="event-stream">
 
-            <strong>
-              {distance !== null
-                ? "DETECTED"
-                : "NONE"}
-            </strong>
-          </div>
+            {events.length === 0 ? (
+              <div className="event-empty">
+                NO EVENTS
+              </div>
+            ) : (
+              events.map(
+                (item, index) => (
+                  <div
+                    className="event-row"
+                    key={
+                      `${item.timestamp}-${index}`
+                    }
+                  >
+                    <span className="event-time">
+                      {formatTime(
+                        item.timestamp
+                      )}
+                    </span>
 
-          <div className="analysis-row">
-            <span>
-              VECTOR
-            </span>
+                    <strong>
+                      {formatEventName(
+                        item.event
+                      )}
+                    </strong>
+                  </div>
+                )
+              )
+            )}
 
-            <strong>
-              {motion}
-            </strong>
-          </div>
-
-          <div className="analysis-row">
-            <span>
-              RATE
-            </span>
-
-            <strong>
-              {velocity.toFixed(1)}
-            </strong>
           </div>
 
           <div className="divider" />
@@ -438,6 +478,11 @@ function App() {
           />
 
           <SystemRow
+            name="EVENT ENGINE"
+            online={connected}
+          />
+
+          <SystemRow
             name="AI CORE"
             online={false}
             text="PENDING"
@@ -456,19 +501,44 @@ function App() {
         <div className="bottom-center">
           <span />
 
-          ENVIRONMENT STATE
+          WORLD STATE + EVENTS
 
           <span />
         </div>
 
         <div>
-          BUILD 0.5
+          BUILD 0.6
         </div>
 
       </footer>
 
     </main>
   );
+}
+
+function formatTime(
+  timestamp: number
+) {
+  return new Date(
+    timestamp * 1000
+  ).toLocaleTimeString(
+    [],
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }
+  );
+}
+
+function formatEventName(
+  event: string
+) {
+  return event
+    .replaceAll(
+      "_",
+      " "
+    );
 }
 
 type PanelBlockProps = {

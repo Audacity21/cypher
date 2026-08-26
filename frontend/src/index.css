@@ -733,3 +733,63 @@ body {
   }
 
 }
+
+/* =========================================================
+   EVENT STREAM
+   ========================================================= */
+
+.event-stream {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+
+  max-height: 140px;
+
+  overflow: hidden;
+}
+
+.event-row {
+  min-height: 24px;
+
+  padding:
+    4px 0;
+
+  display: grid;
+
+  grid-template-columns:
+    64px 1fr;
+
+  align-items: center;
+
+  border-bottom:
+    1px solid
+    rgba(81, 198, 230, 0.06);
+
+  font-size:
+    clamp(6px, 0.5vw, 8px);
+
+  letter-spacing: 0.08em;
+}
+
+.event-time {
+  color: #486976;
+}
+
+.event-row strong {
+  color: #9bdce8;
+
+  font-weight: 500;
+}
+
+.event-empty {
+  padding:
+    10px 0;
+
+  font-size:
+    clamp(7px, 0.5vw, 8px);
+
+  letter-spacing: 0.15em;
+
+  color: #496774;
+}

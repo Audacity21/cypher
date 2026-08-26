@@ -6,11 +6,13 @@ from backend.hardware import CypherHardware
 
 
 class SensorStream:
+    MAX_TRACKING_DISTANCE_CM = 200.0
+
     def __init__(
         self,
         hardware: CypherHardware,
         interval: float = 0.25,
-        history_size: int = 8,
+        history_size: int = 10,
     ):
         self.hardware = hardware
         self.interval = interval
@@ -24,11 +26,24 @@ class SensorStream:
         distance: float,
         timestamp: float,
     ):
+        # Ignore motion analysis outside our trusted radar range.
+        if (
+            distance <= 0
+            or distance > self.MAX_TRACKING_DISTANCE_CM
+        ):
+            self.distance_history.clear()
+
+            return {
+                "smoothed_distance_cm": distance,
+                "velocity_cm_s": 0.0,
+                "motion": "OUT_OF_RANGE",
+            }
+
         self.distance_history.append(
             (timestamp, distance)
         )
 
-        if len(self.distance_history) < 2:
+        if len(self.distance_history) < 3:
             return {
                 "smoothed_distance_cm": distance,
                 "velocity_cm_s": 0.0,
@@ -40,6 +55,7 @@ class SensorStream:
             for item in self.distance_history
         ]
 
+        # Slightly stronger smoothing than before.
         smoothed_distance = (
             sum(distances) / len(distances)
         )
@@ -64,10 +80,11 @@ class SensorStream:
                 - oldest_distance
             ) / delta_time
 
-        if velocity < -5:
+        # Dead zone for jitter.
+        if velocity < -8:
             motion = "APPROACHING"
 
-        elif velocity > 5:
+        elif velocity > 8:
             motion = "RECEDING"
 
         else:
@@ -155,7 +172,7 @@ class SensorStream:
     async def sensor_stream(self):
         while True:
             try:
-                # Keep all Arduino access sequential.
+                # Serial access stays sequential.
                 distance = await asyncio.to_thread(
                     self.hardware.get_distance
                 )
@@ -213,7 +230,7 @@ class SensorStream:
                     "type": "sensor_state",
 
                     "data": {
-                        # Distance
+                        # Spatial
                         "distance_cm":
                             round(
                                 distance,
@@ -234,6 +251,13 @@ class SensorStream:
                             motion_analysis[
                                 "motion"
                             ],
+
+                        "tracking":
+                            (
+                                0
+                                < distance
+                                <= self.MAX_TRACKING_DISTANCE_CM
+                            ),
 
                         # Light
                         "light":

@@ -4,14 +4,21 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from backend.hardware import CypherHardware
 from backend.sensor_stream import SensorStream
+from backend.world_state_manager import WorldStateManager
+from backend.event_engine import EventEngine
 
 
-hardware = CypherHardware(port="COM5")
+hardware = CypherHardware(
+    port="COM5"
+)
 
 sensor_stream = SensorStream(
     hardware=hardware,
-    interval=0.1,
+    interval=0.25,
 )
+
+world_state = WorldStateManager()
+event_engine = EventEngine()
 
 
 @asynccontextmanager
@@ -43,6 +50,11 @@ async def root():
     }
 
 
+@app.get("/state")
+async def get_state():
+    return world_state.get_current_dict()
+
+
 @app.websocket("/ws/sensors")
 async def websocket_sensors(
     websocket: WebSocket,
@@ -52,11 +64,54 @@ async def websocket_sensors(
     print("Cypher UI connected.")
 
     try:
-        async for state in sensor_stream.sensor_stream():
-            await websocket.send_json(state)
+        async for sensor_message in sensor_stream.sensor_stream():
+
+            if (
+                sensor_message.get("type")
+                != "sensor_state"
+            ):
+                await websocket.send_json(
+                    sensor_message
+                )
+                continue
+
+            sensor_data = sensor_message[
+                "data"
+            ]
+
+            current_state = (
+                world_state.update(
+                    sensor_data
+                )
+            )
+
+            events = event_engine.evaluate(
+                world_state.get_previous(),
+                current_state,
+            )
+
+            await websocket.send_json(
+                {
+                    "type": "world_state",
+                    "data": current_state.to_dict(),
+                }
+            )
+
+            for event in events:
+                print(
+                    f"[CYPHER EVENT] "
+                    f"{event['event']} "
+                    f"{event['data']}"
+                )
+
+                await websocket.send_json(event)
 
     except WebSocketDisconnect:
-        print("Cypher UI disconnected.")
+        print(
+            "Cypher UI disconnected."
+        )
 
     except Exception as error:
-        print(f"WebSocket error: {error}")
+        print(
+            f"WebSocket error: {error}"
+        )
