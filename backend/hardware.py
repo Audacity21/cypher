@@ -40,3 +40,23 @@ class CypherHardware:
         return int(
             response["data"]["light"]
         )
+
+    def get_climate(self) -> dict:
+        response = self.serial.send_command("GET_CLIMATE")
+
+        if not response.get("ok"):
+            raise RuntimeError(
+                response.get(
+                    "error",
+                    "Unknown climate sensor error",
+                )
+            )
+
+        return {
+            "temperature_c": float(
+                response["data"]["temperature_c"]
+            ),
+            "humidity_percent": float(
+                response["data"]["humidity_percent"]
+            ),
+        }

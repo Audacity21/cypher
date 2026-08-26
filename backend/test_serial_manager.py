@@ -1,7 +1,9 @@
 from serial_manager import SerialManager
 
 
-cypher = SerialManager(port="COM5")
+cypher = SerialManager(
+    port="COM5"
+)
 
 try:
     cypher.connect()
@@ -14,6 +16,10 @@ try:
         "GET_LIGHT"
     )
 
+    climate = cypher.send_command(
+        "GET_CLIMATE"
+    )
+
     print()
     print("Distance:")
     print(distance)
@@ -21,6 +27,10 @@ try:
     print()
     print("Light:")
     print(light)
+
+    print()
+    print("Climate:")
+    print(climate)
 
 finally:
     cypher.disconnect()

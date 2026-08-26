@@ -12,7 +12,14 @@ type SensorMessage = {
     motion?: string;
 
     light?: number;
+    light_percent?: number;
     light_state?: string;
+
+    temperature_c?: number;
+    temperature_state?: string;
+
+    humidity_percent?: number;
+    humidity_state?: string;
   };
 };
 
@@ -29,8 +36,27 @@ function App() {
   const [light, setLight] =
     useState<number | null>(null);
 
+  const [lightPercent, setLightPercent] =
+    useState<number | null>(null);
+
   const [lightState, setLightState] =
     useState("UNKNOWN");
+
+  const [temperature, setTemperature] =
+    useState<number | null>(null);
+
+  const [
+    temperatureState,
+    setTemperatureState,
+  ] = useState("UNKNOWN");
+
+  const [humidity, setHumidity] =
+    useState<number | null>(null);
+
+  const [
+    humidityState,
+    setHumidityState,
+  ] = useState("UNKNOWN");
 
   const [connected, setConnected] =
     useState(false);
@@ -63,48 +89,87 @@ function App() {
         return;
       }
 
+      const data = message.data;
+
       if (
-        message.data.smoothed_distance_cm
-        !== undefined
+        data.smoothed_distance_cm !==
+        undefined
       ) {
         setDistance(
-          message.data.smoothed_distance_cm
+          data.smoothed_distance_cm
         );
       }
 
       if (
-        message.data.velocity_cm_s
-        !== undefined
+        data.velocity_cm_s !== undefined
       ) {
         setVelocity(
-          message.data.velocity_cm_s
+          data.velocity_cm_s
         );
       }
 
       if (
-        message.data.motion
-        !== undefined
+        data.motion !== undefined
       ) {
         setMotion(
-          message.data.motion
+          data.motion
         );
       }
 
       if (
-        message.data.light
-        !== undefined
+        data.light !== undefined
       ) {
         setLight(
-          message.data.light
+          data.light
         );
       }
 
       if (
-        message.data.light_state
-        !== undefined
+        data.light_percent !== undefined
+      ) {
+        setLightPercent(
+          data.light_percent
+        );
+      }
+
+      if (
+        data.light_state !== undefined
       ) {
         setLightState(
-          message.data.light_state
+          data.light_state
+        );
+      }
+
+      if (
+        data.temperature_c !== undefined
+      ) {
+        setTemperature(
+          data.temperature_c
+        );
+      }
+
+      if (
+        data.temperature_state !==
+        undefined
+      ) {
+        setTemperatureState(
+          data.temperature_state
+        );
+      }
+
+      if (
+        data.humidity_percent !== undefined
+      ) {
+        setHumidity(
+          data.humidity_percent
+        );
+      }
+
+      if (
+        data.humidity_state !== undefined
+      ) {
+        setHumidityState(
+          data.humidity_state
         );
       }
     };
@@ -123,6 +188,7 @@ function App() {
       <div className="background-grid" />
 
       <header className="topbar">
+
         <div>
           <div className="eyebrow">
             LOCAL INTELLIGENCE SYSTEM
@@ -146,6 +212,7 @@ function App() {
             ? "PERCEPTION ONLINE"
             : "PERCEPTION OFFLINE"}
         </div>
+
       </header>
 
       <section className="workspace">
@@ -170,9 +237,11 @@ function App() {
 
           <PanelBlock
             label="VELOCITY"
-            value={Math.abs(
-              velocity
-            ).toFixed(1)}
+            value={
+              Math.abs(
+                velocity
+              ).toFixed(1)
+            }
             unit="CM/S"
           />
 
@@ -181,16 +250,29 @@ function App() {
           <PanelBlock
             label="AMBIENT LIGHT"
             value={
-              light !== null
-                ? light.toString()
+              lightPercent !== null
+                ? lightPercent.toString()
                 : "---"
             }
+            unit="%"
           />
 
           <PanelBlock
             label="LIGHT STATE"
             value={lightState}
           />
+
+          <div className="divider" />
+
+          <div className="mini-label">
+            RAW LIGHT
+          </div>
+
+          <div className="sensor-name">
+            {light !== null
+              ? light
+              : "---"}
+          </div>
 
         </aside>
 
@@ -212,20 +294,25 @@ function App() {
 
             <div>
               RANGE LIMIT
-              <strong>200 CM</strong>
+
+              <strong>
+                200 CM
+              </strong>
             </div>
 
             <div>
               LIGHT
-              <strong>{lightState}</strong>
+
+              <strong>
+                {lightState}
+              </strong>
             </div>
 
             <div>
-              TRACK
+              CLIMATE
+
               <strong>
-                {distance !== null
-                  ? "LOCKED"
-                  : "SEARCHING"}
+                {temperatureState}
               </strong>
             </div>
 
@@ -236,11 +323,63 @@ function App() {
         <aside className="side-panel right-panel">
 
           <div className="panel-heading">
+            ENVIRONMENT
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              TEMPERATURE
+            </span>
+
+            <strong>
+              {temperature !== null
+                ? `${temperature.toFixed(1)}°C`
+                : "---"}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              TEMP STATE
+            </span>
+
+            <strong>
+              {temperatureState}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              HUMIDITY
+            </span>
+
+            <strong>
+              {humidity !== null
+                ? `${humidity.toFixed(1)}%`
+                : "---"}
+            </strong>
+          </div>
+
+          <div className="analysis-row">
+            <span>
+              HUMIDITY STATE
+            </span>
+
+            <strong>
+              {humidityState}
+            </strong>
+          </div>
+
+          <div className="divider" />
+
+          <div className="panel-heading">
             TRACK ANALYSIS
           </div>
 
           <div className="analysis-row">
-            <span>TARGET</span>
+            <span>
+              TARGET
+            </span>
 
             <strong>
               {distance !== null
@@ -250,7 +389,9 @@ function App() {
           </div>
 
           <div className="analysis-row">
-            <span>VECTOR</span>
+            <span>
+              VECTOR
+            </span>
 
             <strong>
               {motion}
@@ -258,10 +399,12 @@ function App() {
           </div>
 
           <div className="analysis-row">
-            <span>LIGHT</span>
+            <span>
+              RATE
+            </span>
 
             <strong>
-              {lightState}
+              {velocity.toFixed(1)}
             </strong>
           </div>
 
@@ -277,11 +420,6 @@ function App() {
           />
 
           <SystemRow
-            name="SERIAL BUS"
-            online={connected}
-          />
-
-          <SystemRow
             name="ULTRASONIC"
             online={distance !== null}
           />
@@ -289,6 +427,14 @@ function App() {
           <SystemRow
             name="LIGHT SENSOR"
             online={light !== null}
+          />
+
+          <SystemRow
+            name="DHT11"
+            online={
+              temperature !== null &&
+              humidity !== null
+            }
           />
 
           <SystemRow
@@ -309,12 +455,14 @@ function App() {
 
         <div className="bottom-center">
           <span />
-          MULTI-SENSOR FEED
+
+          ENVIRONMENT STATE
+
           <span />
         </div>
 
         <div>
-          BUILD 0.4
+          BUILD 0.5
         </div>
 
       </footer>
@@ -344,7 +492,9 @@ function PanelBlock({
       </div>
 
       <div
-        className={`metric-value ${className}`}
+        className={
+          `metric-value ${className}`
+        }
       >
         {value}
 

@@ -1,8 +1,9 @@
 #include <ArduinoJson.h>
+#include <DHT.h>
 
 // ============================================================
 // CYPHER FIRMWARE
-// Version 0.4.0
+// Version 0.5.0
 // ============================================================
 
 // -------------------------
@@ -12,6 +13,11 @@
 const int TRIG_PIN = 9;
 const int ECHO_PIN = 10;
 const int LDR_PIN = A0;
+
+#define DHT_PIN 7
+#define DHT_TYPE DHT11
+
+DHT dht(DHT_PIN, DHT_TYPE);
 
 
 // ============================================================
@@ -43,6 +49,24 @@ float readDistanceCm() {
 
 int readLightLevel() {
   return analogRead(LDR_PIN);
+}
+
+
+bool readClimate(
+  float &temperature,
+  float &humidity
+) {
+  humidity = dht.readHumidity();
+  temperature = dht.readTemperature();
+
+  if (
+    isnan(humidity) ||
+    isnan(temperature)
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 
@@ -87,10 +111,12 @@ void setup() {
 
   pinMode(LDR_PIN, INPUT);
 
+  dht.begin();
+
   delay(2000);
 
   Serial.println(
-    "{\"type\":\"ready\",\"firmware\":\"0.4.0\"}"
+    "{\"type\":\"ready\",\"firmware\":\"0.5.0\"}"
   );
 }
 
@@ -105,7 +131,9 @@ void loop() {
     return;
   }
 
-  String input = Serial.readStringUntil('\n');
+  String input =
+    Serial.readStringUntil('\n');
+
   input.trim();
 
   if (input.length() == 0) {
@@ -120,7 +148,10 @@ void loop() {
   JsonDocument request;
 
   DeserializationError error =
-    deserializeJson(request, input);
+    deserializeJson(
+      request,
+      input
+    );
 
   if (error) {
     Serial.println(
@@ -135,9 +166,14 @@ void loop() {
   // Extract Fields
   // ----------------------------------------------------------
 
-  const char* type = request["type"];
-  const char* id = request["id"];
-  const char* cmd = request["cmd"];
+  const char* type =
+    request["type"];
+
+  const char* id =
+    request["id"];
+
+  const char* cmd =
+    request["cmd"];
 
 
   // ----------------------------------------------------------
@@ -156,7 +192,9 @@ void loop() {
     return;
   }
 
-  if (strcmp(type, "cmd") != 0) {
+  if (
+    strcmp(type, "cmd") != 0
+  ) {
     Serial.println(
       "{\"type\":\"error\",\"ok\":false,\"error\":\"invalid_type\"}"
     );
@@ -169,8 +207,9 @@ void loop() {
   // COMMAND: PING
   // ==========================================================
 
-  if (strcmp(cmd, "PING") == 0) {
-
+  if (
+    strcmp(cmd, "PING") == 0
+  ) {
     JsonDocument response;
 
     response["type"] = "resp";
@@ -178,7 +217,11 @@ void loop() {
     response["cmd"] = "PING";
     response["ok"] = true;
 
-    serializeJson(response, Serial);
+    serializeJson(
+      response,
+      Serial
+    );
+
     Serial.println();
 
     return;
@@ -189,25 +232,40 @@ void loop() {
   // COMMAND: GET_DISTANCE
   // ==========================================================
 
-  if (strcmp(cmd, "GET_DISTANCE") == 0) {
-
-    float distance = readDistanceCm();
+  if (
+    strcmp(
+      cmd,
+      "GET_DISTANCE"
+    ) == 0
+  ) {
+    float distance =
+      readDistanceCm();
 
     JsonDocument response;
 
     response["type"] = "resp";
     response["id"] = id;
-    response["cmd"] = "GET_DISTANCE";
+    response["cmd"] =
+      "GET_DISTANCE";
 
     if (distance >= 0) {
       response["ok"] = true;
-      response["data"]["distance_cm"] = distance;
+
+      response["data"]
+              ["distance_cm"] =
+        distance;
     } else {
       response["ok"] = false;
-      response["error"] = "no_echo";
+
+      response["error"] =
+        "no_echo";
     }
 
-    serializeJson(response, Serial);
+    serializeJson(
+      response,
+      Serial
+    );
+
     Serial.println();
 
     return;
@@ -218,20 +276,192 @@ void loop() {
   // COMMAND: GET_LIGHT
   // ==========================================================
 
-  if (strcmp(cmd, "GET_LIGHT") == 0) {
-
-    int lightLevel = readLightLevel();
+  if (
+    strcmp(
+      cmd,
+      "GET_LIGHT"
+    ) == 0
+  ) {
+    int lightLevel =
+      readLightLevel();
 
     JsonDocument response;
 
     response["type"] = "resp";
     response["id"] = id;
-    response["cmd"] = "GET_LIGHT";
+    response["cmd"] =
+      "GET_LIGHT";
     response["ok"] = true;
 
-    response["data"]["light"] = lightLevel;
+    response["data"]
+            ["light"] =
+      lightLevel;
 
-    serializeJson(response, Serial);
+    serializeJson(
+      response,
+      Serial
+    );
+
+    Serial.println();
+
+    return;
+  }
+
+
+  // ==========================================================
+  // COMMAND: GET_TEMP
+  // ==========================================================
+
+  if (
+    strcmp(
+      cmd,
+      "GET_TEMP"
+    ) == 0
+  ) {
+    float temperature;
+    float humidity;
+
+    bool success =
+      readClimate(
+        temperature,
+        humidity
+      );
+
+    if (!success) {
+      sendError(
+        id,
+        cmd,
+        "dht_read_failed"
+      );
+
+      return;
+    }
+
+    JsonDocument response;
+
+    response["type"] = "resp";
+    response["id"] = id;
+    response["cmd"] =
+      "GET_TEMP";
+    response["ok"] = true;
+
+    response["data"]
+            ["temperature_c"] =
+      temperature;
+
+    serializeJson(
+      response,
+      Serial
+    );
+
+    Serial.println();
+
+    return;
+  }
+
+
+  // ==========================================================
+  // COMMAND: GET_HUMIDITY
+  // ==========================================================
+
+  if (
+    strcmp(
+      cmd,
+      "GET_HUMIDITY"
+    ) == 0
+  ) {
+    float temperature;
+    float humidity;
+
+    bool success =
+      readClimate(
+        temperature,
+        humidity
+      );
+
+    if (!success) {
+      sendError(
+        id,
+        cmd,
+        "dht_read_failed"
+      );
+
+      return;
+    }
+
+    JsonDocument response;
+
+    response["type"] = "resp";
+    response["id"] = id;
+    response["cmd"] =
+      "GET_HUMIDITY";
+    response["ok"] = true;
+
+    response["data"]
+            ["humidity_percent"] =
+      humidity;
+
+    serializeJson(
+      response,
+      Serial
+    );
+
+    Serial.println();
+
+    return;
+  }
+
+
+  // ==========================================================
+  // COMMAND: GET_CLIMATE
+  // ==========================================================
+
+  if (
+    strcmp(
+      cmd,
+      "GET_CLIMATE"
+    ) == 0
+  ) {
+    float temperature;
+    float humidity;
+
+    bool success =
+      readClimate(
+        temperature,
+        humidity
+      );
+
+    if (!success) {
+      sendError(
+        id,
+        cmd,
+        "dht_read_failed"
+      );
+
+      return;
+    }
+
+    JsonDocument response;
+
+    response["type"] = "resp";
+    response["id"] = id;
+    response["cmd"] =
+      "GET_CLIMATE";
+    response["ok"] = true;
+
+    response["data"]
+            ["temperature_c"] =
+      temperature;
+
+    response["data"]
+            ["humidity_percent"] =
+      humidity;
+
+    serializeJson(
+      response,
+      Serial
+    );
+
     Serial.println();
 
     return;
