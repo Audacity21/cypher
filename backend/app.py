@@ -2,19 +2,34 @@ import asyncio
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    WebSocket,
+    WebSocketDisconnect,
+)
 
 from backend.action_engine import ActionEngine
 from backend.behavior_engine import BehaviorEngine
 from backend.event_engine import EventEngine
 from backend.hardware import CypherHardware
+from backend.intelligence_engine import IntelligenceEngine
+from backend.ollama_intelligence import OllamaIntelligence
 from backend.sensor_stream import SensorStream
 from backend.world_state_manager import WorldStateManager
 
 
+# ============================================================
+# HARDWARE
+# ============================================================
+
 hardware = CypherHardware(
     port="COM5"
 )
+
+
+# ============================================================
+# PERCEPTION
+# ============================================================
 
 sensor_stream = SensorStream(
     hardware=hardware,
@@ -25,6 +40,24 @@ world_state = WorldStateManager()
 
 event_engine = EventEngine()
 
+
+# ============================================================
+# INTELLIGENCE
+# ============================================================
+
+# Deterministic intelligence remains authoritative.
+intelligence_engine = IntelligenceEngine()
+
+# Local Qwen model runs in shadow mode.
+# It observes the same event + world state,
+# but its decisions NEVER control hardware yet.
+shadow_intelligence = OllamaIntelligence()
+
+
+# ============================================================
+# ACTIONS
+# ============================================================
+
 action_engine = ActionEngine(
     hardware
 )
@@ -34,20 +67,32 @@ behavior_engine = BehaviorEngine(
 )
 
 
+# ============================================================
+# APP LIFESPAN
+# ============================================================
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Starting Cypher backend...")
+async def lifespan(
+    app: FastAPI,
+):
+    print(
+        "Starting Cypher backend..."
+    )
 
     hardware.connect()
 
-    print("Cypher hardware ready.")
+    print(
+        "Cypher hardware ready."
+    )
 
     try:
-        action_engine.idle()
+        action_result = (
+            action_engine.idle()
+        )
 
         print(
             "[CYPHER ACTION]",
-            "IDLE",
+            action_result,
         )
 
     except Exception as error:
@@ -58,7 +103,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    print("Stopping Cypher backend...")
+    print(
+        "Stopping Cypher backend..."
+    )
 
     try:
         action_engine.off()
@@ -72,17 +119,31 @@ async def lifespan(app: FastAPI):
     hardware.disconnect()
 
 
+# ============================================================
+# FASTAPI
+# ============================================================
+
 app = FastAPI(
     title="Cypher",
     lifespan=lifespan,
 )
 
 
+# ============================================================
+# HTTP ENDPOINTS
+# ============================================================
+
 @app.get("/")
 async def root():
     return {
         "name": "CYPHER",
         "status": "online",
+        "architecture":
+            "intelligence-shadow-v1",
+        "llm":
+            "qwen2.5:1.5b",
+        "llm_mode":
+            "shadow",
     }
 
 
@@ -101,6 +162,10 @@ async def get_action_status():
     }
 
 
+# ============================================================
+# SENSOR WEBSOCKET
+# ============================================================
+
 @app.websocket("/ws/sensors")
 async def websocket_sensors(
     websocket: WebSocket,
@@ -116,12 +181,14 @@ async def websocket_sensors(
             sensor_stream.sensor_stream()
         ):
 
-            # ---------------------------------------------
-            # SENSOR ERRORS / NON-STATE MESSAGES
-            # ---------------------------------------------
+            # =================================================
+            # SENSOR ERROR / OTHER MESSAGE
+            # =================================================
 
             if (
-                sensor_message.get("type")
+                sensor_message.get(
+                    "type"
+                )
                 != "sensor_state"
             ):
                 await websocket.send_json(
@@ -130,9 +197,10 @@ async def websocket_sensors(
 
                 continue
 
-            # ---------------------------------------------
-            # UPDATE WORLD STATE
-            # ---------------------------------------------
+
+            # =================================================
+            # WORLD STATE UPDATE
+            # =================================================
 
             sensor_data = (
                 sensor_message["data"]
@@ -148,9 +216,14 @@ async def websocket_sensors(
                 world_state.get_previous()
             )
 
-            # ---------------------------------------------
-            # EVENT DETECTION
-            # ---------------------------------------------
+            current_state_dict = (
+                current_state.to_dict()
+            )
+
+
+            # =================================================
+            # EVENT ENGINE
+            # =================================================
 
             events = (
                 event_engine.evaluate(
@@ -159,21 +232,25 @@ async def websocket_sensors(
                 )
             )
 
-            # ---------------------------------------------
+
+            # =================================================
             # SEND WORLD STATE TO UI
-            # ---------------------------------------------
+            # =================================================
 
             await websocket.send_json(
                 {
-                    "type": "world_state",
+                    "type":
+                        "world_state",
+
                     "data":
-                        current_state.to_dict(),
+                        current_state_dict,
                 }
             )
 
-            # ---------------------------------------------
-            # HANDLE EVENTS
-            # ---------------------------------------------
+
+            # =================================================
+            # PROCESS EVENTS
+            # =================================================
 
             for event in events:
 
@@ -183,21 +260,205 @@ async def websocket_sensors(
                     f"{event['data']}"
                 )
 
-                # Send semantic event to UI.
                 await websocket.send_json(
                     event
                 )
 
-                # Let behavior layer decide
-                # whether the event needs a
-                # physical response.
+
+                # =============================================
+                # AUTHORITATIVE INTELLIGENCE
+                # =============================================
+
                 try:
-                    action_result = (
-                        await asyncio.to_thread(
-                            behavior_engine.handle_event,
-                            event,
+                    decision = (
+                        intelligence_engine.decide(
+                            event=event,
+                            world_state=(
+                                current_state_dict
+                            ),
                         )
                     )
+
+                    valid = (
+                        intelligence_engine.validate(
+                            decision
+                        )
+                    )
+
+                    print(
+                        "[CYPHER INTELLIGENCE]",
+                        {
+                            "intent":
+                                decision.intent,
+
+                            "reason":
+                                decision.reason,
+
+                            "confidence":
+                                decision.confidence,
+
+                            "valid":
+                                valid,
+                        },
+                    )
+
+
+                    await websocket.send_json(
+                        {
+                            "type":
+                                "intelligence",
+
+                            "mode":
+                                "authoritative",
+
+                            "decision": {
+                                "intent":
+                                    decision.intent,
+
+                                "reason":
+                                    decision.reason,
+
+                                "confidence":
+                                    decision.confidence,
+
+                                "valid":
+                                    valid,
+                            },
+                        }
+                    )
+
+
+                    # =========================================
+                    # SHADOW QWEN INTELLIGENCE
+                    # =========================================
+
+                    try:
+                        shadow_decision = (
+                            await asyncio.to_thread(
+                                shadow_intelligence.decide,
+                                event,
+                                current_state_dict,
+                            )
+                        )
+
+                        shadow_valid = (
+                            shadow_intelligence.validate(
+                                shadow_decision
+                            )
+                        )
+
+                        agreement = (
+                            decision.intent
+                            == shadow_decision.intent
+                        )
+
+                        print(
+                            "[CYPHER SHADOW]",
+                            {
+                                "intent":
+                                    shadow_decision.intent,
+
+                                "reason":
+                                    shadow_decision.reason,
+
+                                "confidence":
+                                    shadow_decision.confidence,
+
+                                "valid":
+                                    shadow_valid,
+
+                                "agreement":
+                                    agreement,
+                            },
+                        )
+
+
+                        await websocket.send_json(
+                            {
+                                "type":
+                                    "shadow_intelligence",
+
+                                "decision": {
+                                    "intent":
+                                        shadow_decision.intent,
+
+                                    "reason":
+                                        shadow_decision.reason,
+
+                                    "confidence":
+                                        shadow_decision.confidence,
+
+                                    "valid":
+                                        shadow_valid,
+
+                                    "agreement":
+                                        agreement,
+
+                                    "model":
+                                        "qwen2.5:1.5b",
+                                },
+                            }
+                        )
+
+                    except Exception as error:
+                        # Shadow intelligence can fail without
+                        # disturbing Cypher's normal control loop.
+                        print(
+                            "[CYPHER SHADOW ERROR]",
+                            error,
+                        )
+
+                        await websocket.send_json(
+                            {
+                                "type":
+                                    "shadow_error",
+
+                                "error":
+                                    str(error),
+                            }
+                        )
+
+
+                    # =========================================
+                    # AUTHORITY VALIDATION GATE
+                    # =========================================
+
+                    if not valid:
+                        print(
+                            "[CYPHER INTELLIGENCE BLOCKED]",
+                            {
+                                "intent":
+                                    decision.intent,
+
+                                "reason":
+                                    decision.reason,
+                            },
+                        )
+
+                        continue
+
+
+                    # =========================================
+                    # BEHAVIOR ENGINE
+                    #
+                    # IMPORTANT:
+                    # ONLY THE DETERMINISTIC DECISION
+                    # REACHES THIS POINT.
+                    #
+                    # SHADOW QWEN DOES NOT CONTROL HARDWARE.
+                    # =========================================
+
+                    action_result = (
+                        await asyncio.to_thread(
+                            behavior_engine.handle_decision,
+                            decision,
+                        )
+                    )
+
+
+                    # =========================================
+                    # ACTION RESULT
+                    # =========================================
 
                     if action_result:
                         print(
@@ -205,8 +466,6 @@ async def websocket_sensors(
                             action_result,
                         )
 
-                        # Also expose the action
-                        # to the frontend.
                         await websocket.send_json(
                             {
                                 "type":
@@ -217,26 +476,29 @@ async def websocket_sensors(
                             }
                         )
 
+
                 except Exception as error:
                     print(
-                        "[CYPHER ACTION ERROR]",
+                        "[CYPHER INTELLIGENCE ERROR]",
                         error,
                     )
 
                     await websocket.send_json(
                         {
                             "type":
-                                "action_error",
+                                "intelligence_error",
 
                             "error":
                                 str(error),
                         }
                     )
 
+
     except WebSocketDisconnect:
         print(
             "Cypher UI disconnected."
         )
+
 
     except Exception as error:
         print(

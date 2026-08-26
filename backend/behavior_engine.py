@@ -1,16 +1,16 @@
 from backend.action_engine import ActionEngine
+from backend.intelligence_engine import IntelligenceDecision
 
 
 class BehaviorEngine:
     """
-    Decides how Cypher should physically react
-    to semantic events.
+    Executes validated semantic intentions.
 
-    EventEngine:
-        What happened?
+    IntelligenceEngine:
+        What should Cypher intend to do?
 
     BehaviorEngine:
-        How should Cypher react?
+        Is that intention allowed to become behavior?
 
     ActionEngine:
         Perform the physical action.
@@ -22,38 +22,36 @@ class BehaviorEngine:
     ):
         self.actions = actions
 
-    def handle_event(
+    def handle_decision(
         self,
-        event: dict,
+        decision: IntelligenceDecision,
     ) -> dict | None:
 
-        event_name = event.get(
-            "event"
-        )
+        intent = decision.intent.upper()
 
-        if not event_name:
+        if intent == "NONE":
             return None
 
-        # -----------------------------------------
-        # LIGHT
-        # -----------------------------------------
-
-        if event_name == "LIGHTS_WENT_OFF":
-            return self.actions.dark()
-
-        if event_name == "LIGHTS_CAME_ON":
+        if intent == "IDLE":
             return self.actions.idle()
 
-        # -----------------------------------------
-        # PRESENCE
-        # -----------------------------------------
-
-        if event_name == "OBJECT_ENTERED_RANGE":
+        if intent == "PRESENCE":
             return self.actions.presence()
 
-        if event_name == "OBJECT_LEFT_RANGE":
-            return self.actions.idle()
+        if intent == "DARK":
+            return self.actions.dark()
 
-        # Motion events currently don't need
-        # a physical reaction.
-        return None
+        if intent == "ALERT":
+            return self.actions.alert()
+
+        if intent == "SUCCESS":
+            return self.actions.success()
+
+        if intent == "THINKING":
+            return self.actions.thinking()
+
+        # Defense in depth.
+        # Unknown intentions never reach hardware.
+        raise ValueError(
+            f"Unsupported behavior intent: {intent}"
+        )
