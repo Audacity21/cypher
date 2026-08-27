@@ -3,6 +3,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 
 from backend.actions.behavior_engine import BehaviorEngine
+from backend.intelligence.authority_policy import AuthorityPolicy, AuthorityResult
 from backend.intelligence.intelligence_engine import IntelligenceEngine
 from backend.intelligence.intelligence_guard import IntelligenceGuard
 from backend.intelligence.ollama_intelligence import OllamaIntelligence
@@ -17,6 +18,7 @@ class ShadowWork:
     event: dict
     world_state: dict
     authoritative_intent: str
+    generation: int
 
 
 class CypherRuntime:
@@ -30,6 +32,7 @@ class CypherRuntime:
         event_engine: EventEngine,
         intelligence_engine: IntelligenceEngine,
         intelligence_guard: IntelligenceGuard,
+        authority_policy: AuthorityPolicy,
         shadow_intelligence: OllamaIntelligence,
         shadow_metrics: ShadowMetrics,
         behavior_engine: BehaviorEngine,
@@ -40,12 +43,14 @@ class CypherRuntime:
         self.event_engine = event_engine
         self.intelligence_engine = intelligence_engine
         self.intelligence_guard = intelligence_guard
+        self.authority_policy = authority_policy
         self.shadow_intelligence = shadow_intelligence
         self.shadow_metrics = shadow_metrics
         self.behavior_engine = behavior_engine
         self.subscriber_queue_size = subscriber_queue_size
         self._subscribers: set[asyncio.Queue] = set()
         self._shadow_queue: asyncio.Queue[ShadowWork] = asyncio.Queue(maxsize=1)
+        self._event_generation = 0
 
     def subscribe(self) -> asyncio.Queue:
         queue = asyncio.Queue(maxsize=self.subscriber_queue_size)
@@ -86,6 +91,8 @@ class CypherRuntime:
             await self._handle_event(event, current_state_dict)
 
     async def _handle_event(self, event: dict, current_state: dict) -> None:
+        self._event_generation += 1
+        generation = self._event_generation
         print(f"[CYPHER EVENT] {event['event']} {event['data']}")
         await self.broadcast(event)
 
@@ -121,13 +128,20 @@ class CypherRuntime:
             )
             if action_result:
                 print("[CYPHER ACTION]", action_result)
-                await self.broadcast({"type": "action", "action": action_result})
+                await self.broadcast(
+                    {
+                        "type": "action",
+                        "source": "deterministic",
+                        "action": action_result,
+                    }
+                )
 
             self._enqueue_shadow(
                 ShadowWork(
                     event=event,
                     world_state=current_state,
                     authoritative_intent=decision.intent,
+                    generation=generation,
                 )
             )
         except Exception as error:
@@ -141,6 +155,7 @@ class CypherRuntime:
         if self._shadow_queue.full():
             with suppress(asyncio.QueueEmpty):
                 self._shadow_queue.get_nowait()
+                self._shadow_queue.task_done()
         self._shadow_queue.put_nowait(work)
 
     async def run_shadow_worker(self) -> None:
@@ -164,13 +179,17 @@ class CypherRuntime:
         )
         guard_result = self.intelligence_guard.evaluate(shadow_decision)
         agreement = work.authoritative_intent == shadow_decision.intent
-        self.shadow_metrics.record(
-            authoritative_intent=work.authoritative_intent,
-            shadow_intent=shadow_decision.intent,
-            shadow_confidence=shadow_decision.confidence,
+        authority_result = self.authority_policy.evaluate(
+            intent=shadow_decision.intent,
+            confidence=shadow_decision.confidence,
             guard_allowed=guard_result.allowed,
-            guard_reason=guard_result.reason,
         )
+
+        if authority_result.allowed and work.generation != self._event_generation:
+            authority_result = AuthorityResult(
+                allowed=False,
+                reason="stale_shadow_decision",
+            )
 
         print(
             "[CYPHER SHADOW]",
@@ -185,6 +204,52 @@ class CypherRuntime:
             "[CYPHER GUARD]",
             {"allowed": guard_result.allowed, "reason": guard_result.reason},
         )
+        if authority_result.allowed and not agreement:
+            try:
+                action_result = await asyncio.to_thread(
+                    self.behavior_engine.handle_decision,
+                    shadow_decision,
+                )
+                if action_result:
+                    print("[CYPHER AI ACTION]", action_result)
+                    await self.broadcast(
+                        {
+                            "type": "action",
+                            "source": "ai",
+                            "action": action_result,
+                        }
+                    )
+            except Exception as error:
+                authority_result = AuthorityResult(
+                    allowed=False,
+                    reason="ai_action_failed",
+                )
+                print("[CYPHER AI ACTION ERROR]", error)
+                await self.broadcast(
+                    {
+                        "type": "action_error",
+                        "source": "ai",
+                        "error": str(error),
+                    }
+                )
+
+        self.shadow_metrics.record(
+            authoritative_intent=work.authoritative_intent,
+            shadow_intent=shadow_decision.intent,
+            shadow_confidence=shadow_decision.confidence,
+            guard_allowed=guard_result.allowed,
+            guard_reason=guard_result.reason,
+            authority_allowed=authority_result.allowed,
+            authority_reason=authority_result.reason,
+        )
+        print(
+            "[CYPHER AUTHORITY]",
+            {
+                "allowed": authority_result.allowed,
+                "reason": authority_result.reason,
+            },
+        )
+
         await self.broadcast(
             {
                 "type": "shadow_intelligence",
@@ -196,6 +261,25 @@ class CypherRuntime:
                     "model": "qwen2.5:1.5b",
                     "guard_allowed": guard_result.allowed,
                     "guard_reason": guard_result.reason,
+                    "authority_allowed": authority_result.allowed,
+                    "authority_reason": authority_result.reason,
+                },
+            }
+        )
+        await self.broadcast(
+            {
+                "type": "authority",
+                "data": {
+                    "allowed": authority_result.allowed,
+                    "reason": authority_result.reason,
+                    "source": (
+                        "ai" if authority_result.allowed else "deterministic"
+                    ),
+                    "intent": (
+                        shadow_decision.intent
+                        if authority_result.allowed
+                        else work.authoritative_intent
+                    ),
                 },
             }
         )

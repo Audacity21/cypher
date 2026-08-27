@@ -10,6 +10,9 @@ class ShadowMetrics:
     guard_accepted: int = 0
     guard_blocked: int = 0
 
+    authority_granted: int = 0
+    authority_denied: int = 0
+
     last_authoritative_intent: str | None = None
     last_shadow_intent: str | None = None
     last_shadow_confidence: float | None = None
@@ -18,6 +21,10 @@ class ShadowMetrics:
     last_guard_allowed: bool | None = None
     last_guard_reason: str | None = None
 
+    last_authority_allowed: bool | None = None
+    last_authority_reason: str | None = None
+    last_decision_source: str = "deterministic"
+
     def record(
         self,
         authoritative_intent: str,
@@ -25,6 +32,8 @@ class ShadowMetrics:
         shadow_confidence: float,
         guard_allowed: bool,
         guard_reason: str,
+        authority_allowed: bool = False,
+        authority_reason: str = "not_evaluated",
     ) -> None:
 
         agreement = (
@@ -66,6 +75,17 @@ class ShadowMetrics:
             guard_reason
         )
 
+        if authority_allowed:
+            self.authority_granted += 1
+        else:
+            self.authority_denied += 1
+
+        self.last_authority_allowed = authority_allowed
+        self.last_authority_reason = authority_reason
+        self.last_decision_source = (
+            "ai" if authority_allowed else "deterministic"
+        )
+
     @property
     def agreement_rate(self) -> float:
         if self.total == 0:
@@ -90,6 +110,18 @@ class ShadowMetrics:
             1,
         )
 
+    @property
+    def authority_grant_rate(self) -> float:
+        if self.total == 0:
+            return 0.0
+
+        return round(
+            self.authority_granted
+            / self.total
+            * 100,
+            1,
+        )
+
     def to_dict(self) -> dict:
         data = asdict(self)
 
@@ -99,6 +131,10 @@ class ShadowMetrics:
 
         data["guard_acceptance_rate"] = (
             self.guard_acceptance_rate
+        )
+
+        data["authority_grant_rate"] = (
+            self.authority_grant_rate
         )
 
         return data

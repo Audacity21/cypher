@@ -7,6 +7,7 @@ from backend.actions.action_engine import ActionEngine
 from backend.actions.behavior_engine import BehaviorEngine
 from backend.hardware.hardware import CypherHardware
 from backend.intelligence.intelligence_engine import IntelligenceEngine
+from backend.intelligence.authority_policy import AuthorityPolicy
 from backend.intelligence.intelligence_guard import IntelligenceGuard
 from backend.intelligence.ollama_intelligence import OllamaIntelligence
 from backend.intelligence.shadow_metrics import ShadowMetrics
@@ -23,6 +24,7 @@ event_engine = EventEngine()
 intelligence_engine = IntelligenceEngine()
 shadow_intelligence = OllamaIntelligence()
 intelligence_guard = IntelligenceGuard(minimum_confidence=0.70)
+authority_policy = AuthorityPolicy(minimum_authority_confidence=0.85)
 shadow_metrics = ShadowMetrics()
 action_engine = ActionEngine(hardware)
 behavior_engine = BehaviorEngine(action_engine)
@@ -33,6 +35,7 @@ runtime = CypherRuntime(
     event_engine=event_engine,
     intelligence_engine=intelligence_engine,
     intelligence_guard=intelligence_guard,
+    authority_policy=authority_policy,
     shadow_intelligence=shadow_intelligence,
     shadow_metrics=shadow_metrics,
     behavior_engine=behavior_engine,
@@ -82,11 +85,14 @@ async def root():
     return {
         "name": "CYPHER",
         "status": "online",
-        "architecture": "autonomous-guarded-shadow-v1",
+        "architecture": "autonomous-limited-ai-authority-v1",
         "llm": "qwen2.5:1.5b",
-        "llm_mode": "shadow",
+        "llm_mode": "limited_authority",
         "guard": "enabled",
         "minimum_confidence": intelligence_guard.minimum_confidence,
+        "minimum_authority_confidence": (
+            authority_policy.minimum_authority_confidence
+        ),
     }
 
 

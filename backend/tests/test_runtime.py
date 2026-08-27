@@ -1,6 +1,7 @@
 import asyncio
 
 from backend.intelligence.intelligence_engine import IntelligenceDecision
+from backend.intelligence.authority_policy import AuthorityPolicy
 from backend.intelligence.intelligence_guard import IntelligenceGuard
 from backend.intelligence.shadow_metrics import ShadowMetrics
 from backend.perception.world_state_manager import WorldStateManager
@@ -35,6 +36,19 @@ class FakeShadowIntelligence:
         raise AssertionError("Shadow work must not run in the event path")
 
 
+class FixedShadowIntelligence:
+    def __init__(self, intent="DARK", confidence=0.95):
+        self.intent = intent
+        self.confidence = confidence
+
+    def decide(self, event, world_state):
+        return IntelligenceDecision(
+            intent=self.intent,
+            reason="Fixed test decision.",
+            confidence=self.confidence,
+        )
+
+
 class FakeBehavior:
     def __init__(self):
         self.intents = []
@@ -44,7 +58,7 @@ class FakeBehavior:
         return {"status": decision.intent}
 
 
-def make_runtime(*, subscriber_queue_size=100):
+def make_runtime(*, subscriber_queue_size=100, shadow_intelligence=None):
     behavior = FakeBehavior()
     runtime = CypherRuntime(
         sensor_stream=FakeSensorStream(),
@@ -52,7 +66,8 @@ def make_runtime(*, subscriber_queue_size=100):
         event_engine=FakeEventEngine(),
         intelligence_engine=FakeIntelligence(),
         intelligence_guard=IntelligenceGuard(),
-        shadow_intelligence=FakeShadowIntelligence(),
+        authority_policy=AuthorityPolicy(),
+        shadow_intelligence=(shadow_intelligence or FakeShadowIntelligence()),
         shadow_metrics=ShadowMetrics(),
         behavior_engine=behavior,
         subscriber_queue_size=subscriber_queue_size,
@@ -99,10 +114,64 @@ def test_broadcast_drops_oldest_message_for_slow_subscriber():
 
 def test_shadow_queue_keeps_newest_pending_event():
     runtime, _ = make_runtime()
-    first = ShadowWork({}, {"sequence": 1}, "IDLE")
-    second = ShadowWork({}, {"sequence": 2}, "PRESENCE")
+    first = ShadowWork({}, {"sequence": 1}, "IDLE", 1)
+    second = ShadowWork({}, {"sequence": 2}, "PRESENCE", 2)
 
     runtime._enqueue_shadow(first)
     runtime._enqueue_shadow(second)
 
     assert runtime._shadow_queue.get_nowait() == second
+
+
+def test_fresh_guarded_ai_decision_can_supersede_deterministic_action():
+    async def scenario():
+        runtime, behavior = make_runtime(
+            shadow_intelligence=FixedShadowIntelligence(intent="DARK")
+        )
+        runtime._event_generation = 4
+
+        await runtime._evaluate_shadow(
+            ShadowWork({}, {}, "PRESENCE", generation=4)
+        )
+
+        assert behavior.intents == ["DARK"]
+        assert runtime.shadow_metrics.last_authority_allowed is True
+        assert runtime.shadow_metrics.last_decision_source == "ai"
+
+    asyncio.run(scenario())
+
+
+def test_stale_ai_decision_cannot_change_behavior():
+    async def scenario():
+        runtime, behavior = make_runtime(
+            shadow_intelligence=FixedShadowIntelligence(intent="DARK")
+        )
+        runtime._event_generation = 5
+
+        await runtime._evaluate_shadow(
+            ShadowWork({}, {}, "PRESENCE", generation=4)
+        )
+
+        assert behavior.intents == []
+        assert runtime.shadow_metrics.last_authority_allowed is False
+        assert runtime.shadow_metrics.last_authority_reason == "stale_shadow_decision"
+
+    asyncio.run(scenario())
+
+
+def test_unauthorized_ai_intent_keeps_deterministic_authority():
+    async def scenario():
+        runtime, behavior = make_runtime(
+            shadow_intelligence=FixedShadowIntelligence(intent="ALERT", confidence=0.99)
+        )
+        runtime._event_generation = 2
+
+        await runtime._evaluate_shadow(
+            ShadowWork({}, {}, "IDLE", generation=2)
+        )
+
+        assert behavior.intents == []
+        assert runtime.shadow_metrics.last_authority_allowed is False
+        assert runtime.shadow_metrics.last_authority_reason == "intent_not_authorized"
+
+    asyncio.run(scenario())

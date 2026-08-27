@@ -33,6 +33,10 @@ type SensorMessage = {
     guard_blocked?: number;
     guard_acceptance_rate?: number;
 
+    authority_granted?: number;
+    authority_denied?: number;
+    authority_grant_rate?: number;
+
     last_authoritative_intent?: string | null;
     last_shadow_intent?: string | null;
     last_shadow_confidence?: number | null;
@@ -40,6 +44,10 @@ type SensorMessage = {
 
     last_guard_allowed?: boolean | null;
     last_guard_reason?: string | null;
+
+    last_authority_allowed?: boolean | null;
+    last_authority_reason?: string | null;
+    last_decision_source?: string;
   };
 
   decision?: {
@@ -52,6 +60,8 @@ type SensorMessage = {
 
     guard_allowed?: boolean;
     guard_reason?: string;
+    authority_allowed?: boolean;
+    authority_reason?: string;
   };
 };
 
@@ -194,6 +204,24 @@ function App() {
     lastGuardReason,
     setLastGuardReason,
   ] = useState<string | null>(null);
+
+  const [authorityGranted, setAuthorityGranted] =
+    useState(0);
+
+  const [authorityDenied, setAuthorityDenied] =
+    useState(0);
+
+  const [authorityGrantRate, setAuthorityGrantRate] =
+    useState(0);
+
+  const [lastAuthorityAllowed, setLastAuthorityAllowed] =
+    useState<boolean | null>(null);
+
+  const [lastAuthorityReason, setLastAuthorityReason] =
+    useState<string | null>(null);
+
+  const [lastDecisionSource, setLastDecisionSource] =
+    useState("DETERMINISTIC");
 
 
   // =========================================================
@@ -398,6 +426,18 @@ function App() {
           data.guard_acceptance_rate ?? 0
         );
 
+        setAuthorityGranted(
+          data.authority_granted ?? 0
+        );
+
+        setAuthorityDenied(
+          data.authority_denied ?? 0
+        );
+
+        setAuthorityGrantRate(
+          data.authority_grant_rate ?? 0
+        );
+
 
         setShadowAuthoritative(
           data.last_authoritative_intent
@@ -428,6 +468,20 @@ function App() {
         setLastGuardReason(
           data.last_guard_reason
           ?? null
+        );
+
+        setLastAuthorityAllowed(
+          data.last_authority_allowed
+          ?? null
+        );
+
+        setLastAuthorityReason(
+          data.last_authority_reason
+          ?? null
+        );
+
+        setLastDecisionSource(
+          (data.last_decision_source ?? "deterministic").toUpperCase()
         );
 
         return;
@@ -495,6 +549,27 @@ function App() {
           );
         }
 
+        if (
+          decision.authority_allowed !== undefined
+        ) {
+          setLastAuthorityAllowed(
+            decision.authority_allowed
+          );
+          setLastDecisionSource(
+            decision.authority_allowed
+              ? "AI"
+              : "DETERMINISTIC"
+          );
+        }
+
+        if (
+          decision.authority_reason !== undefined
+        ) {
+          setLastAuthorityReason(
+            decision.authority_reason
+          );
+        }
+
         return;
       }
     };
@@ -526,6 +601,13 @@ function App() {
     lastGuardAllowed === null
       ? ""
       : lastGuardAllowed
+        ? "ai-agree"
+        : "ai-disagree";
+
+  const authorityClass =
+    lastAuthorityAllowed === null
+      ? ""
+      : lastAuthorityAllowed
         ? "ai-agree"
         : "ai-disagree";
 
@@ -700,10 +782,10 @@ function App() {
 
 
             <div>
-              AI SHADOW
+              AI AUTHORITY
 
               <strong>
-                {shadowAgreementRate.toFixed(1)}%
+                {authorityGrantRate.toFixed(1)}%
               </strong>
             </div>
 
@@ -862,6 +944,30 @@ function App() {
           </div>
 
 
+          <div className="analysis-row">
+            <span>
+              AUTHORITY RATE
+            </span>
+
+            <strong>
+              {authorityGrantRate.toFixed(1)}%
+            </strong>
+          </div>
+
+
+          <div className="analysis-row">
+            <span>
+              GRANT / DENY
+            </span>
+
+            <strong>
+              {authorityGranted}
+              {" / "}
+              {authorityDenied}
+            </strong>
+          </div>
+
+
           <div className="divider" />
 
 
@@ -960,6 +1066,43 @@ function App() {
           </div>
 
 
+          <div className="analysis-row">
+            <span>
+              AUTHORITY
+            </span>
+
+            <strong className={authorityClass}>
+              {lastAuthorityAllowed === null
+                ? "---"
+                : lastAuthorityAllowed
+                  ? "GRANTED"
+                  : "FALLBACK"}
+            </strong>
+          </div>
+
+
+          <div className="analysis-row">
+            <span>
+              ACTIVE SOURCE
+            </span>
+
+            <strong>
+              {lastDecisionSource}
+            </strong>
+          </div>
+
+
+          <div className="analysis-row">
+            <span>
+              POLICY REASON
+            </span>
+
+            <strong>
+              {lastAuthorityReason ?? "---"}
+            </strong>
+          </div>
+
+
           <div className="divider" />
 
 
@@ -1033,14 +1176,14 @@ function App() {
         <div className="bottom-center">
           <span />
 
-          GUARDED QWEN SHADOW
+          LIMITED QWEN AUTHORITY
 
           <span />
         </div>
 
 
         <div>
-          BUILD 0.8
+          BUILD 0.9
         </div>
 
       </footer>
