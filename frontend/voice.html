@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cypher Voice</title>
+  </head>
+  <body>
+    <main class="voice-shell">
+      <section class="voice-card">
+        <div class="eyebrow">CYPHER // CONVERSATION LOOP</div>
+        <h1>VOICE CONSOLE</h1>
+        <p id="status" class="status">READY</p>
+
+        <button id="listen" class="listen" type="button">
+          START LISTENING
+        </button>
+
+        <form id="message-form">
+          <label for="message">COMMAND OR QUESTION</label>
+          <div class="message-row">
+            <input
+              id="message"
+              autocomplete="off"
+              placeholder="Set a timer for ten seconds"
+            />
+            <button type="submit">SEND</button>
+          </div>
+        </form>
+
+        <div class="exchange">
+          <div>
+            <span>YOU</span>
+            <p id="transcript">---</p>
+          </div>
+          <div>
+            <span>CYPHER</span>
+            <p id="reply">---</p>
+          </div>
+        </div>
+
+        <label class="speak-toggle">
+          <input id="speak" type="checkbox" checked />
+          SPEAK RESPONSES
+        </label>
+      </section>
+    </main>
+    <script type="module" src="/src/voice.ts"></script>
+  </body>
+</html>
