@@ -62,19 +62,23 @@ function activateConversation() {
 function selectVoice() {
   const voices = window.speechSynthesis?.getVoices() ?? [];
   const preferredPatterns = [
-    /female.*en[-_]?in/i,
-    /heera/i,
-    /priya/i,
-    /neerja/i,
-    /female/i,
-    /zira/i,
-    /samantha/i,
+    /ryan.*en[-_]?gb/i,
+    /george.*en[-_]?gb/i,
+    /arthur.*en[-_]?gb/i,
+    /daniel.*en[-_]?gb/i,
+    /male.*en[-_]?gb/i,
+    /en[-_]?gb.*male/i,
+    /ryan/i,
+    /george/i,
+    /arthur/i,
+    /daniel/i,
   ];
   selectedVoice = null;
   for (const pattern of preferredPatterns) {
     selectedVoice = voices.find((voice) => pattern.test(`${voice.name} ${voice.lang}`)) ?? null;
     if (selectedVoice) break;
   }
+  selectedVoice ??= voices.find((voice) => /^en[-_]?gb$/i.test(voice.lang)) ?? null;
   selectedVoice ??= voices.find((voice) => /^en[-_]/i.test(voice.lang)) ?? null;
 }
 
@@ -104,7 +108,7 @@ function speakText(text: string, after?: () => void) {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.voice = selectedVoice;
   utterance.rate = 1;
-  utterance.pitch = 1.08;
+  utterance.pitch = 0.92;
   utterance.onend = () => after?.();
   utterance.onerror = () => after?.();
   window.speechSynthesis.speak(utterance);
@@ -172,7 +176,7 @@ if (!recognition) {
 } else {
   recognition.continuous = false;
   recognition.interimResults = false;
-  recognition.lang = "en-IN";
+  recognition.lang = "en-GB";
 
   recognition.onstart = () => {
     listening = true;
