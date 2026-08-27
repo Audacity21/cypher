@@ -1,3 +1,5 @@
+"""Legacy executable safety check; covered by pytest unit tests."""
+
 from backend.intelligence.intelligence_engine import IntelligenceDecision
 from backend.intelligence.intelligence_guard import IntelligenceGuard
 

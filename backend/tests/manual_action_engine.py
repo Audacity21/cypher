@@ -1,3 +1,5 @@
+"""Manual COM5/RGB integration check; intentionally excluded from pytest."""
+
 import time
 
 from backend.actions.action_engine import ActionEngine
