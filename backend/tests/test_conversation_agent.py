@@ -20,7 +20,22 @@ class EmptyWorldState:
 
 
 class FakeLlm:
+    def __init__(self):
+        self.last_prompt = None
+
     def generate_json(self, prompt):
+        self.last_prompt = prompt
+        return {"reply": "Paris is the capital of France."}
+
+
+class CorruptThenCorrectLlm:
+    def __init__(self):
+        self.calls = 0
+
+    def generate_json(self, prompt):
+        self.calls += 1
+        if self.calls == 1:
+            return {"reply": "My name is Ankit."}
         return {"reply": "Paris is the capital of France."}
 
 
@@ -80,6 +95,31 @@ def test_agent_uses_qwen_for_general_question(tmp_path):
 
     assert result["reply"] == "Paris is the capital of France."
     assert result["tool"] is None
+    assert "assistant name is Cypher" in agent.llm.last_prompt
+    assert "user's name is Ankit" in agent.llm.last_prompt
+
+
+def test_qwen_prompt_contains_bounded_history_and_memory(tmp_path):
+    agent = make_agent(tmp_path)
+    first = agent.handle(text="Remember that I prefer concise answers")
+
+    agent.handle(
+        text="Tell me something useful",
+        conversation_id=first["conversation_id"],
+    )
+
+    assert "I prefer concise answers" in agent.llm.last_prompt
+    assert "Tell me something useful" in agent.llm.last_prompt
+
+
+def test_corrupted_identity_reply_is_retried_with_minimal_prompt(tmp_path):
+    agent = make_agent(tmp_path)
+    agent.llm = CorruptThenCorrectLlm()
+
+    result = agent.handle(text="What is the capital of France?")
+
+    assert result["reply"] == "Paris is the capital of France."
+    assert agent.llm.calls == 2
 
 
 def test_distance_tool_falls_back_to_hardware_without_hud(tmp_path):
@@ -90,3 +130,13 @@ def test_distance_tool_falls_back_to_hardware_without_hud(tmp_path):
 
     assert "55.5 centimeters" in result["reply"]
     assert result["tool"]["result"]["distance_cm"] == 55.5
+
+
+def test_identity_roles_cannot_be_reversed_by_qwen(tmp_path):
+    agent = make_agent(tmp_path)
+
+    assistant = agent.handle(text="What is your name?")
+    owner = agent.handle(text="What is my name?")
+
+    assert assistant["reply"] == "My name is Cypher, Ankit."
+    assert owner["reply"] == "Your name is Ankit."

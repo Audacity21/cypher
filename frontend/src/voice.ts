@@ -7,9 +7,7 @@ type AgentResponse = {
 };
 
 type SpeechRecognitionEventLike = Event & {
-  results: ArrayLike<{
-    0: { transcript: string };
-  }>;
+  results: ArrayLike<{ 0: { transcript: string } }>;
 };
 
 type Recognition = {
@@ -41,13 +39,84 @@ const transcript = document.querySelector<HTMLParagraphElement>("#transcript")!;
 const reply = document.querySelector<HTMLParagraphElement>("#reply")!;
 const speak = document.querySelector<HTMLInputElement>("#speak")!;
 
-let conversationId = localStorage.getItem("cypher_conversation_id");
+const RecognitionApi = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+const recognition = RecognitionApi ? new RecognitionApi() : null;
+const CONVERSATION_TIMEOUT_MS = 20_000;
+
+let conversationId = localStorage.getItem("cypher_conversation_id_v2");
+let wakeEnabled = false;
 let listening = false;
+let processing = false;
+let awaitingCommand = false;
+let selectedVoice: SpeechSynthesisVoice | null = null;
+let conversationActiveUntil = 0;
+
+function conversationIsActive() {
+  return Date.now() < conversationActiveUntil;
+}
+
+function activateConversation() {
+  conversationActiveUntil = Date.now() + CONVERSATION_TIMEOUT_MS;
+}
+
+function selectVoice() {
+  const voices = window.speechSynthesis?.getVoices() ?? [];
+  const preferredPatterns = [
+    /female.*en[-_]?in/i,
+    /heera/i,
+    /priya/i,
+    /neerja/i,
+    /female/i,
+    /zira/i,
+    /samantha/i,
+  ];
+  selectedVoice = null;
+  for (const pattern of preferredPatterns) {
+    selectedVoice = voices.find((voice) => pattern.test(`${voice.name} ${voice.lang}`)) ?? null;
+    if (selectedVoice) break;
+  }
+  selectedVoice ??= voices.find((voice) => /^en[-_]/i.test(voice.lang)) ?? null;
+}
+
+selectVoice();
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.addEventListener("voiceschanged", selectVoice);
+}
+
+function startRecognitionSoon() {
+  if (!recognition || !wakeEnabled || processing || listening) return;
+  window.setTimeout(() => {
+    if (!wakeEnabled || processing || listening) return;
+    try {
+      recognition.start();
+    } catch {
+      status.textContent = "WAKE LISTENER RETRYING";
+    }
+  }, 250);
+}
+
+function speakText(text: string, after?: () => void) {
+  if (!speak.checked || !("speechSynthesis" in window)) {
+    after?.();
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.voice = selectedVoice;
+  utterance.rate = 1;
+  utterance.pitch = 1.08;
+  utterance.onend = () => after?.();
+  utterance.onerror = () => after?.();
+  window.speechSynthesis.speak(utterance);
+}
 
 async function sendMessage(text: string) {
   const cleanText = text.trim();
   if (!cleanText) return;
 
+  processing = true;
+  activateConversation();
+  if (listening) recognition?.stop();
   transcript.textContent = cleanText;
   status.textContent = "THINKING";
   listenButton.disabled = true;
@@ -61,7 +130,6 @@ async function sendMessage(text: string) {
         conversation_id: conversationId,
       }),
     });
-
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       throw new Error(body.detail ?? `Request failed (${response.status})`);
@@ -69,24 +137,24 @@ async function sendMessage(text: string) {
 
     const result = (await response.json()) as AgentResponse;
     conversationId = result.conversation_id;
-    localStorage.setItem("cypher_conversation_id", conversationId);
+    localStorage.setItem("cypher_conversation_id_v2", conversationId);
     reply.textContent = result.reply;
     status.textContent = result.tool
       ? `TOOL // ${result.tool.name.toUpperCase()}`
       : "RESPONSE READY";
 
-    if (speak.checked && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(result.reply);
-      utterance.rate = 1;
-      utterance.pitch = 0.9;
-      window.speechSynthesis.speak(utterance);
-    }
+    speakText(result.reply, () => {
+      activateConversation();
+      processing = false;
+      listenButton.disabled = false;
+      startRecognitionSoon();
+    });
   } catch (error) {
     status.textContent = "ERROR";
     reply.textContent = error instanceof Error ? error.message : "Request failed";
-  } finally {
+    processing = false;
     listenButton.disabled = false;
+    startRecognitionSoon();
   }
 }
 
@@ -97,44 +165,110 @@ form.addEventListener("submit", (event) => {
   void sendMessage(text);
 });
 
-const RecognitionApi =
-  window.SpeechRecognition ?? window.webkitSpeechRecognition;
-
-if (!RecognitionApi) {
+if (!recognition) {
   listenButton.disabled = true;
   listenButton.textContent = "VOICE UNAVAILABLE";
   status.textContent = "USE TEXT INPUT";
 } else {
-  const recognition = new RecognitionApi();
   recognition.continuous = false;
   recognition.interimResults = false;
   recognition.lang = "en-IN";
 
   recognition.onstart = () => {
     listening = true;
-    status.textContent = "LISTENING";
-    listenButton.textContent = "STOP LISTENING";
+    status.textContent = (awaitingCommand || conversationIsActive())
+      ? "CONVERSATION ACTIVE // 20S"
+      : "WAKE WORD ARMED";
+    listenButton.textContent = "DISABLE WAKE WORD";
     listenButton.classList.add("active");
   };
 
   recognition.onend = () => {
     listening = false;
-    listenButton.textContent = "START LISTENING";
-    listenButton.classList.remove("active");
-    if (status.textContent === "LISTENING") status.textContent = "READY";
+    if (!wakeEnabled) {
+      listenButton.textContent = "ENABLE WAKE WORD";
+      listenButton.classList.remove("active");
+      status.textContent = "READY";
+    } else {
+      startRecognitionSoon();
+    }
   };
 
   recognition.onerror = (event) => {
-    status.textContent = `VOICE ERROR // ${event.error.toUpperCase()}`;
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      wakeEnabled = false;
+      status.textContent = "MICROPHONE PERMISSION REQUIRED";
+      listenButton.textContent = "ENABLE WAKE WORD";
+      listenButton.classList.remove("active");
+      return;
+    }
+    if (event.error !== "no-speech") {
+      status.textContent = `VOICE ERROR // ${event.error.toUpperCase()}`;
+    }
   };
 
   recognition.onresult = (event) => {
-    const text = event.results[0]?.[0]?.transcript ?? "";
-    void sendMessage(text);
+    const heard = event.results[0]?.[0]?.transcript?.trim() ?? "";
+    if (!heard) return;
+    transcript.textContent = heard;
+
+    if (awaitingCommand) {
+      awaitingCommand = false;
+      activateConversation();
+      void sendMessage(heard);
+      return;
+    }
+
+    if (conversationIsActive()) {
+      activateConversation();
+      void sendMessage(heard);
+      return;
+    }
+
+    const wakeMatch = /\bcypher\b/i.exec(heard);
+    if (!wakeMatch) {
+      status.textContent = "WAKE WORD ARMED";
+      return;
+    }
+
+    const command = heard.slice(wakeMatch.index + wakeMatch[0].length).replace(/^[,\s]+/, "");
+    if (command) {
+      activateConversation();
+      void sendMessage(command);
+      return;
+    }
+
+    processing = true;
+    awaitingCommand = true;
+    activateConversation();
+    if (listening) recognition.stop();
+    reply.textContent = "Hello Ankit. How can I help?";
+    status.textContent = "WAKE WORD DETECTED";
+    speakText("Hello Ankit. How can I help?", () => {
+      activateConversation();
+      processing = false;
+      startRecognitionSoon();
+    });
   };
 
+  listenButton.textContent = "ENABLE WAKE WORD";
   listenButton.addEventListener("click", () => {
-    if (listening) recognition.stop();
-    else recognition.start();
+    wakeEnabled = !wakeEnabled;
+    awaitingCommand = false;
+    if (!wakeEnabled) conversationActiveUntil = 0;
+    if (wakeEnabled) startRecognitionSoon();
+    else if (listening) recognition.stop();
   });
+
+  window.setInterval(() => {
+    if (
+      wakeEnabled
+      && !processing
+      && !awaitingCommand
+      && !conversationIsActive()
+      && status.textContent?.startsWith("CONVERSATION ACTIVE")
+    ) {
+      status.textContent = "WAKE WORD ARMED";
+    }
+  }, 500);
 }
