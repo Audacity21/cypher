@@ -1,3 +1,5 @@
+import time
+
 from backend.hardware.hardware import CypherHardware
 
 
@@ -32,6 +34,12 @@ class ActionEngine:
 
         # Environment became dark
         "DARK": (25, 0, 60),
+    }
+
+    SOUND_PATTERNS = {
+        "PRESENCE": [(880, 90)],
+        "SUCCESS": [(784, 100), (1047, 140)],
+        "ALERT": [(440, 220), (660, 220), (440, 220)],
     }
 
     def __init__(
@@ -124,3 +132,22 @@ class ActionEngine:
         self,
     ) -> str:
         return self.current_status
+
+    def play_sound(self, sound: str) -> dict:
+        sound = sound.upper()
+        if sound not in self.SOUND_PATTERNS:
+            raise ValueError(f"Unknown Cypher sound: {sound}")
+
+        tones = self.SOUND_PATTERNS[sound]
+        played = []
+        for index, (frequency_hz, duration_ms) in enumerate(tones):
+            played.append(
+                self.hardware.play_tone(frequency_hz, duration_ms)
+            )
+            if index < len(tones) - 1:
+                time.sleep((duration_ms + 80) / 1000)
+
+        return {"sound": sound, "tones": played}
+
+    def stop_sound(self) -> dict:
+        return self.hardware.stop_buzzer()

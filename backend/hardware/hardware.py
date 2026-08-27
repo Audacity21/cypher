@@ -154,3 +154,30 @@ class CypherHardware:
             0,
             0,
         )
+
+    def play_tone(
+        self,
+        frequency_hz: int,
+        duration_ms: int,
+    ) -> dict:
+        if not 100 <= frequency_hz <= 5000:
+            raise ValueError("frequency_hz must be between 100 and 5000")
+        if not 20 <= duration_ms <= 3000:
+            raise ValueError("duration_ms must be between 20 and 3000")
+
+        response = self.serial.send_command(
+            "PLAY_TONE",
+            {
+                "frequency_hz": frequency_hz,
+                "duration_ms": duration_ms,
+            },
+        )
+        if not response.get("ok"):
+            raise RuntimeError(response.get("error", "Unknown buzzer error"))
+        return response["data"]
+
+    def stop_buzzer(self) -> dict:
+        response = self.serial.send_command("STOP_BUZZER")
+        if not response.get("ok"):
+            raise RuntimeError(response.get("error", "Unknown buzzer error"))
+        return response.get("data", {})

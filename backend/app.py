@@ -1,15 +1,20 @@
 import asyncio
+import time
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from fastapi import (
     FastAPI,
+    HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
+from pydantic import BaseModel, Field
 
 from backend.actions.action_engine import ActionEngine
 from backend.actions.behavior_engine import BehaviorEngine
+from backend.alarms.alarm_service import AlarmService
 from backend.perception.event_engine import EventEngine
 from backend.hardware.hardware import CypherHardware
 from backend.intelligence.intelligence_engine import IntelligenceEngine
@@ -19,6 +24,8 @@ from backend.intelligence.ollama_intelligence import OllamaIntelligence
 from backend.perception.sensor_stream import SensorStream
 from backend.intelligence.shadow_metrics import ShadowMetrics
 from backend.perception.world_state_manager import WorldStateManager
+from backend.persistence.alarm_repository import AlarmRepository
+from backend.persistence.database import CypherDatabase
 
 
 # ============================================================
@@ -82,6 +89,27 @@ behavior_engine = BehaviorEngine(
 
 
 # ============================================================
+# PERSISTENCE / SCHEDULER
+# ============================================================
+
+database = CypherDatabase(
+    Path(__file__).parent / "data" / "cypher.db"
+)
+
+alarm_repository = AlarmRepository(database)
+
+alarm_service = AlarmService(
+    alarms=alarm_repository,
+    actions=action_engine,
+)
+
+
+class TimerRequest(BaseModel):
+    seconds: float = Field(gt=0, le=86400)
+    label: str = Field(default="Cypher timer", max_length=200)
+
+
+# ============================================================
 # LIFESPAN
 # ============================================================
 
@@ -115,22 +143,32 @@ async def lifespan(
             error,
         )
 
-    yield
-
-    print(
-        "Stopping Cypher backend..."
+    alarm_task = asyncio.create_task(
+        alarm_service.run(),
+        name="cypher-alarm-service",
     )
 
     try:
-        action_engine.off()
+        yield
+    finally:
+        alarm_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await alarm_task
 
-    except Exception as error:
         print(
-            "[CYPHER ACTION ERROR]",
-            error,
+            "Stopping Cypher backend..."
         )
 
-    hardware.disconnect()
+        try:
+            action_engine.off()
+
+        except Exception as error:
+            print(
+                "[CYPHER ACTION ERROR]",
+                error,
+            )
+
+        hardware.disconnect()
 
 
 # ============================================================
@@ -186,6 +224,45 @@ async def get_action_status():
 @app.get("/intelligence/shadow")
 async def get_shadow_metrics():
     return shadow_metrics.to_dict()
+
+
+@app.post("/timers")
+async def create_timer(request: TimerRequest):
+    return await asyncio.to_thread(
+        alarm_repository.create,
+        kind="timer",
+        label=request.label,
+        trigger_at=time.time() + request.seconds,
+    )
+
+
+@app.get("/alarms")
+async def list_alarms():
+    return await asyncio.to_thread(alarm_repository.list)
+
+
+@app.delete("/alarms/{alarm_id}")
+async def cancel_alarm(alarm_id: str):
+    alarm = await asyncio.to_thread(
+        alarm_repository.cancel,
+        alarm_id,
+    )
+    if alarm is None:
+        raise HTTPException(status_code=404, detail="Alarm not found")
+    return alarm
+
+
+@app.post("/alarms/stop")
+async def stop_alarms():
+    completed = await asyncio.to_thread(
+        alarm_repository.complete_fired
+    )
+    action = await asyncio.to_thread(action_engine.idle)
+    await asyncio.to_thread(action_engine.stop_sound)
+    return {
+        "completed": completed,
+        "action": action,
+    }
 
 
 # ============================================================

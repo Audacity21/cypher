@@ -36,6 +36,9 @@ const int RGB_RED_PIN = 3;
 const int RGB_GREEN_PIN = 5;
 const int RGB_BLUE_PIN = 6;
 
+// Passive buzzer
+const int BUZZER_PIN = 11;
+
 
 // ============================================================
 // SENSOR HELPERS
@@ -224,6 +227,15 @@ void setup() {
     0,
     0,
     0
+  );
+
+  pinMode(
+    BUZZER_PIN,
+    OUTPUT
+  );
+
+  noTone(
+    BUZZER_PIN
   );
 
   // Allow board / sensors
@@ -693,6 +705,90 @@ void loop() {
 
     Serial.println();
 
+    return;
+  }
+
+
+  // ==========================================================
+  // COMMAND: PLAY_TONE
+  // ==========================================================
+
+  if (
+    strcmp(
+      cmd,
+      "PLAY_TONE"
+    ) == 0
+  ) {
+    if (
+      !request["args"].is<JsonObject>()
+    ) {
+      sendError(id, cmd, "missing_args");
+      return;
+    }
+
+    JsonObject args = request["args"];
+
+    if (
+      !args["frequency_hz"].is<int>() ||
+      !args["duration_ms"].is<int>()
+    ) {
+      sendError(id, cmd, "invalid_tone");
+      return;
+    }
+
+    int frequency = args["frequency_hz"];
+    int durationMs = args["duration_ms"];
+
+    if (
+      frequency < 100 ||
+      frequency > 5000 ||
+      durationMs < 20 ||
+      durationMs > 3000
+    ) {
+      sendError(id, cmd, "tone_out_of_range");
+      return;
+    }
+
+    tone(
+      BUZZER_PIN,
+      frequency,
+      durationMs
+    );
+
+    JsonDocument response;
+    response["type"] = "resp";
+    response["id"] = id;
+    response["cmd"] = "PLAY_TONE";
+    response["ok"] = true;
+    response["data"]["frequency_hz"] = frequency;
+    response["data"]["duration_ms"] = durationMs;
+
+    serializeJson(response, Serial);
+    Serial.println();
+    return;
+  }
+
+
+  // ==========================================================
+  // COMMAND: STOP_BUZZER
+  // ==========================================================
+
+  if (
+    strcmp(
+      cmd,
+      "STOP_BUZZER"
+    ) == 0
+  ) {
+    noTone(BUZZER_PIN);
+
+    JsonDocument response;
+    response["type"] = "resp";
+    response["id"] = id;
+    response["cmd"] = "STOP_BUZZER";
+    response["ok"] = true;
+
+    serializeJson(response, Serial);
+    Serial.println();
     return;
   }
 

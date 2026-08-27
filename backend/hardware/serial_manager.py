@@ -24,6 +24,7 @@ class SerialManager:
 
         self.pending_responses = {}
         self.pending_lock = threading.Lock()
+        self.write_lock = threading.Lock()
 
         self.event_queue = queue.Queue()
 
@@ -109,11 +110,12 @@ class SerialManager:
             separators=(",", ":"),
         ) + "\n"
 
-        self.connection.write(
-            serialized.encode(
-                "utf-8"
+        with self.write_lock:
+            self.connection.write(
+                serialized.encode(
+                    "utf-8"
+                )
             )
-        )
 
         try:
             response = (
