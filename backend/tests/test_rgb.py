@@ -1,5 +1,3 @@
-"""Manual COM5 RGB sequence; intentionally excluded from pytest."""
-
 import time
 
 from backend.hardware.hardware import CypherHardware

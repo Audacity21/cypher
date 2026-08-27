@@ -1,5 +1,3 @@
-"""Manual live Qwen check; intentionally excluded from pytest."""
-
 from backend.intelligence.llm_provider import OllamaProvider
 
 

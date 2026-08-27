@@ -1,5 +1,3 @@
-"""Manual COM5 protocol check; intentionally excluded from pytest."""
-
 from backend.hardware.serial_manager import SerialManager
 
 
