@@ -83,3 +83,14 @@ class AlarmRepository:
                 "UPDATE alarms SET status = 'completed' WHERE status = 'fired'"
             )
         return cursor.rowcount
+
+    def complete(self, alarm_id: str) -> dict | None:
+        with self.database.transaction() as connection:
+            connection.execute(
+                """
+                UPDATE alarms SET status = 'completed'
+                WHERE id = ? AND status = 'fired'
+                """,
+                (alarm_id,),
+            )
+        return self.get(alarm_id)

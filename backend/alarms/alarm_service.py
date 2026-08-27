@@ -29,6 +29,14 @@ class AlarmService:
                         "ALERT",
                     )
                     print("[CYPHER ALARM SOUND]", sound)
+
+                    if alarm["kind"] == "timer":
+                        await asyncio.to_thread(
+                            self.alarms.complete,
+                            alarm["id"],
+                        )
+                        reset = await asyncio.to_thread(self.actions.idle)
+                        print("[CYPHER TIMER COMPLETE]", reset)
                 except Exception as error:
                     print("[CYPHER ALARM ACTION ERROR]", error)
             await asyncio.sleep(self.interval)

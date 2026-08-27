@@ -14,18 +14,22 @@ from pydantic import BaseModel, Field
 
 from backend.actions.action_engine import ActionEngine
 from backend.actions.behavior_engine import BehaviorEngine
+from backend.agent.conversation_agent import ConversationAgent
 from backend.alarms.alarm_service import AlarmService
 from backend.perception.event_engine import EventEngine
 from backend.hardware.hardware import CypherHardware
 from backend.intelligence.intelligence_engine import IntelligenceEngine
 from backend.intelligence.authority_policy import AuthorityPolicy
 from backend.intelligence.intelligence_guard import IntelligenceGuard
+from backend.intelligence.llm_provider import OllamaProvider
 from backend.intelligence.ollama_intelligence import OllamaIntelligence
 from backend.perception.sensor_stream import SensorStream
 from backend.intelligence.shadow_metrics import ShadowMetrics
 from backend.perception.world_state_manager import WorldStateManager
 from backend.persistence.alarm_repository import AlarmRepository
+from backend.persistence.conversation_repository import ConversationRepository
 from backend.persistence.database import CypherDatabase
+from backend.persistence.memory_repository import MemoryRepository
 
 
 # ============================================================
@@ -97,16 +101,32 @@ database = CypherDatabase(
 )
 
 alarm_repository = AlarmRepository(database)
+conversation_repository = ConversationRepository(database)
+memory_repository = MemoryRepository(database)
 
 alarm_service = AlarmService(
     alarms=alarm_repository,
     actions=action_engine,
 )
 
+conversation_agent = ConversationAgent(
+    conversations=conversation_repository,
+    memories=memory_repository,
+    alarms=alarm_repository,
+    world_state=world_state,
+    hardware=hardware,
+    llm=OllamaProvider(model="qwen2.5:1.5b"),
+)
+
 
 class TimerRequest(BaseModel):
     seconds: float = Field(gt=0, le=86400)
     label: str = Field(default="Cypher timer", max_length=200)
+
+
+class AgentRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    conversation_id: str | None = None
 
 
 # ============================================================
@@ -263,6 +283,30 @@ async def stop_alarms():
         "completed": completed,
         "action": action,
     }
+
+
+@app.post("/agent/message")
+async def agent_message(request: AgentRequest):
+    try:
+        return await asyncio.to_thread(
+            conversation_agent.handle,
+            text=request.text,
+            conversation_id=request.conversation_id,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.get("/conversations/{conversation_id}/messages")
+async def conversation_history(conversation_id: str):
+    if conversation_repository.get(conversation_id) is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return await asyncio.to_thread(
+        conversation_repository.history,
+        conversation_id,
+    )
 
 
 # ============================================================

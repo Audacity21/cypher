@@ -85,3 +85,6 @@ def test_timer_survives_reopen_and_fires_once(tmp_path):
     assert [alarm["id"] for alarm in due] == [timer["id"]]
     assert reopened.get(timer["id"])["status"] == "fired"
     assert reopened.claim_due(now=timer["trigger_at"] + 2) == []
+
+    completed = reopened.complete(timer["id"])
+    assert completed["status"] == "completed"
