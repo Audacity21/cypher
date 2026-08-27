@@ -13,6 +13,7 @@ from backend.actions.behavior_engine import BehaviorEngine
 from backend.perception.event_engine import EventEngine
 from backend.hardware.hardware import CypherHardware
 from backend.intelligence.intelligence_engine import IntelligenceEngine
+from backend.intelligence.authority_policy import AuthorityPolicy
 from backend.intelligence.intelligence_guard import IntelligenceGuard
 from backend.intelligence.ollama_intelligence import OllamaIntelligence
 from backend.perception.sensor_stream import SensorStream
@@ -56,6 +57,11 @@ shadow_intelligence = OllamaIntelligence()
 # Safety gate for LLM decisions.
 intelligence_guard = IntelligenceGuard(
     minimum_confidence=0.70
+)
+
+# Narrow permission gate applied only after IntelligenceGuard.
+authority_policy = AuthorityPolicy(
+    minimum_authority_confidence=0.85
 )
 
 # Evaluation telemetry.
@@ -147,15 +153,18 @@ async def root():
         "name": "CYPHER",
         "status": "online",
         "architecture":
-            "guarded-shadow-v1",
+            "limited-ai-authority-v1",
         "llm":
             "qwen2.5:1.5b",
         "llm_mode":
-            "shadow",
+            "limited_authority",
         "guard":
             "enabled",
         "minimum_confidence":
             intelligence_guard.minimum_confidence,
+
+        "minimum_authority_confidence":
+            authority_policy.minimum_authority_confidence,
     }
 
 
@@ -337,6 +346,12 @@ async def websocket_sensors(
                         }
                     )
 
+                    # Deterministic fallback remains selected unless Qwen
+                    # passes both the guard and the narrower authority policy.
+                    authoritative_decision = decision
+                    authority_source = "deterministic"
+                    authority_reason = "deterministic_fallback"
+
 
                     # =========================================
                     # SHADOW QWEN
@@ -361,6 +376,20 @@ async def websocket_sensors(
                                 shadow_decision
                             )
                         )
+
+                        authority_result = (
+                            authority_policy.evaluate(
+                                intent=shadow_decision.intent,
+                                confidence=shadow_decision.confidence,
+                                guard_allowed=guard_result.allowed,
+                            )
+                        )
+
+                        if authority_result.allowed:
+                            authoritative_decision = shadow_decision
+                            authority_source = "ai"
+
+                        authority_reason = authority_result.reason
 
 
                         # -------------------------------------
@@ -432,6 +461,20 @@ async def websocket_sensors(
                             },
                         )
 
+                        print(
+                            "[CYPHER AUTHORITY]",
+                            {
+                                "allowed":
+                                    authority_result.allowed,
+
+                                "reason":
+                                    authority_result.reason,
+
+                                "source":
+                                    authority_source,
+                            },
+                        )
+
 
                         print(
                             "[CYPHER SHADOW METRICS]",
@@ -489,13 +532,8 @@ async def websocket_sensors(
                         )
 
 
-                        # IMPORTANT:
-                        #
-                        # Even if guard_result.allowed is True,
-                        # shadow_decision DOES NOT go to the
-                        # BehaviorEngine.
-                        #
-                        # Qwen still has ZERO hardware authority.
+                        # Authority remains restricted to the policy allowlist.
+                        # ALERT and every unknown intent fall back to rules.
 
 
                     except Exception as error:
@@ -539,14 +577,15 @@ async def websocket_sensors(
                     # =========================================
                     # BEHAVIOR
                     #
-                    # ONLY deterministic intelligence
-                    # controls this.
+                    # Guarded/policy-approved Qwen decisions may
+                    # control only the limited authority allowlist.
+                    # Every other path retains deterministic control.
                     # =========================================
 
                     action_result = (
                         await asyncio.to_thread(
                             behavior_engine.handle_decision,
-                            decision,
+                            authoritative_decision,
                         )
                     )
 
@@ -559,7 +598,16 @@ async def websocket_sensors(
 
                         print(
                             "[CYPHER ACTION]",
-                            action_result,
+                            {
+                                "source":
+                                    authority_source,
+
+                                "authority_reason":
+                                    authority_reason,
+
+                                "result":
+                                    action_result,
+                            },
                         )
 
                         await websocket.send_json(
