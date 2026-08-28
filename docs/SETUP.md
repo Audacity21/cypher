@@ -26,6 +26,7 @@ python -m pip install -r requirements.txt
 ```
 
 If the Arduino is not `COM5`, update `CypherHardware(port=...)` in `backend/app.py`.
+Cypher uses the operating system timezone by default. To pin it explicitly, set `$env:CYPHER_TIMEZONE="Asia/Kolkata"` before starting the backend.
 
 ## 3. Local model
 

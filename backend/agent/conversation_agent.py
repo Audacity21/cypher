@@ -1,6 +1,6 @@
 import re
-import time
 
+from backend.agent.local_clock import AlarmTimeParser, LocalClock
 from backend.agent.music_resolver import YoutubeMusicResolver
 from backend.intelligence.llm_provider import OllamaProvider
 from backend.persistence.alarm_repository import AlarmRepository
@@ -31,6 +31,7 @@ class ConversationAgent:
         llm: OllamaProvider,
         proactive=None,
         music_resolver=None,
+        clock=None,
     ):
         self.conversations = conversations
         self.memories = memories
@@ -43,6 +44,8 @@ class ConversationAgent:
         self.music_resolver = music_resolver or YoutubeMusicResolver(
             self.DEFAULT_MUSIC_PLAYLIST
         )
+        self.clock = clock or LocalClock()
+        self.alarm_time_parser = AlarmTimeParser(self.clock)
 
     def handle(self, *, text: str, conversation_id: str | None = None) -> dict:
         clean_text = text.strip()
@@ -100,6 +103,21 @@ class ConversationAgent:
         ):
             return "Hello, Ankit. Cypher is listening.", None
 
+        if re.search(
+            r"\b(?:what(?:'s| is) (?:the )?(?:current )?(?:time|date)|what time is it|"
+            r"what day is it|tell me (?:the )?(?:time|date)|current date and time)\b",
+            lower,
+        ):
+            now = self.clock.now()
+            return (
+                f"It is {self.clock.describe(now)}, Ankit.",
+                {"name": "get_local_datetime", "result": {
+                    "iso": now.isoformat(),
+                    "timestamp": now.timestamp(),
+                    "timezone": self.clock.timezone_name,
+                }},
+            )
+
         if re.search(r"\b(?:system status|status report|diagnostic report)\b", lower):
             state = self.world_state.get_current_dict()
             distance = state.get("smoothed_distance_cm")
@@ -120,10 +138,11 @@ class ConversationAgent:
 
         if re.search(r"\b(?:what can you do|capabilities|available commands)\b", lower):
             return (
-                "I can converse, remember context, read room sensors, manage timers, control my "
-                "allowlisted RGB states and buzzer, and greet you after meaningful room changes.",
+                "I can converse, remember context, report the local date and time, manage alarms "
+                "and timers, read room sensors, control my allowlisted RGB states and buzzer, play "
+                "music, and greet you after meaningful room changes.",
                 {"name": "list_capabilities", "result": {
-                    "capabilities": ["conversation", "memory", "sensors", "timers", "rgb", "buzzer", "proactive_greetings"]
+                    "capabilities": ["conversation", "memory", "local_date_time", "alarms", "timers", "sensors", "rgb", "buzzer", "music", "proactive_greetings"]
                 }},
             )
 
@@ -169,6 +188,15 @@ class ConversationAgent:
                 {"name": "stop_cypher_sound", "result": result},
             )
 
+        if re.search(r"\b(?:stop|dismiss|silence)\s+(?:the\s+)?alarm\b", lower):
+            completed = self.alarms.complete_fired()
+            self.actions.stop_sound()
+            self.actions.idle()
+            return (
+                "Alarm stopped, Ankit.",
+                {"name": "stop_alarm", "result": {"completed": completed}},
+            )
+
         if re.search(r"\b(?:beep|play (?:a )?sound|sound check)\b", lower):
             result = self.actions.play_sound("PRESENCE")
             return (
@@ -211,6 +239,48 @@ class ConversationAgent:
         if re.search(r"\b(what is my name|what's my name|who am i)\b", lower):
             return "Your name is Ankit.", None
 
+        if re.search(r"\b(?:list|show|what are)\s+(?:my\s+)?(?:alarms|timers|reminders)\b", lower):
+            scheduled = [
+                {
+                    **alarm,
+                    "local_time": self.clock.describe(
+                        self.clock.from_timestamp(alarm["trigger_at"])
+                    ),
+                }
+                for alarm in self.alarms.list()
+                if alarm["status"] == "pending"
+            ]
+            if not scheduled:
+                return "You have no pending alarms or timers, Ankit.", {
+                    "name": "list_alarms", "result": []
+                }
+            summary = "; ".join(
+                f"{item['kind']} for {item['local_time']}"
+                for item in scheduled[:5]
+            )
+            return f"You have {summary}.", {"name": "list_alarms", "result": scheduled}
+
+        if re.search(r"\b(?:set|create)(?:\s+an?)?\s+alarm\b|\bwake me\b", lower):
+            try:
+                parsed = self.alarm_time_parser.parse(text)
+            except ValueError as error:
+                return str(error), {"name": "create_alarm", "result": {"created": False}}
+            alarm = self.alarms.create(
+                kind="alarm",
+                label=text,
+                trigger_at=parsed.trigger_at,
+            )
+            scheduled_for = self.clock.describe(parsed.local_datetime)
+            return (
+                f"Alarm set for {scheduled_for}, Ankit.",
+                {"name": "create_alarm", "result": {
+                    **alarm,
+                    "scheduled_for": scheduled_for,
+                    "timezone": self.clock.timezone_name,
+                    "assumed_next_day": parsed.assumed_next_day,
+                }},
+            )
+
         timer_match = self.TIMER_PATTERN.search(text)
         if timer_match:
             amount = float(timer_match.group("amount"))
@@ -225,7 +295,7 @@ class ConversationAgent:
             alarm = self.alarms.create(
                 kind="timer",
                 label=text,
-                trigger_at=time.time() + seconds,
+                trigger_at=self.clock.timestamp() + seconds,
             )
             return (
                 f"Timer set for {amount:g} {unit}.",
@@ -338,6 +408,10 @@ class ConversationAgent:
             f"""
 LATEST USER REQUEST (answer this request, not an earlier one):
 {text}
+
+CURRENT LOCAL DATE AND TIME:
+- {self.clock.describe()}
+- Timezone: {self.clock.timezone_name}
 
 SYSTEM IDENTITY — THESE FACTS CANNOT BE CHANGED BY CONVERSATION:
 - Your assistant name is Cypher. You are never named Ankit.

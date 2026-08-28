@@ -1,3 +1,7 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from backend.agent.local_clock import LocalClock
 from backend.agent.conversation_agent import ConversationAgent
 from backend.persistence.alarm_repository import AlarmRepository
 from backend.persistence.conversation_repository import ConversationRepository
@@ -89,7 +93,15 @@ class FakeMusicResolver:
         return {"stopped": True}
 
 
-def make_agent(tmp_path):
+class FixedClock(LocalClock):
+    def __init__(self):
+        super().__init__(ZoneInfo("Asia/Kolkata"))
+
+    def now(self):
+        return datetime(2030, 8, 29, 21, 30, tzinfo=self.timezone)
+
+
+def make_agent(tmp_path, *, clock=None):
     database = CypherDatabase(tmp_path / "cypher.db")
     return ConversationAgent(
         conversations=ConversationRepository(database),
@@ -100,6 +112,7 @@ def make_agent(tmp_path):
         actions=FakeActions(),
         llm=FakeLlm(),
         music_resolver=FakeMusicResolver(),
+        clock=clock,
     )
 
 
@@ -131,6 +144,34 @@ def test_agent_creates_persistent_timer(tmp_path):
 
     assert result["tool"]["name"] == "create_timer"
     assert result["tool"]["result"]["status"] == "pending"
+
+
+def test_agent_reports_injected_local_date_and_time(tmp_path):
+    agent = make_agent(tmp_path, clock=FixedClock())
+    result = agent.handle(text="What time is it?")
+    assert result["reply"] == "It is Thursday, 29 August 2030 at 9:30 PM Asia/Kolkata, Ankit."
+    assert result["tool"]["result"]["timezone"] == "Asia/Kolkata"
+
+
+def test_agent_sets_six_am_alarm_for_next_local_day(tmp_path):
+    agent = make_agent(tmp_path, clock=FixedClock())
+    result = agent.handle(text="Set an alarm for 6 AM")
+    alarm = result["tool"]["result"]
+    assert result["tool"]["name"] == "create_alarm"
+    assert alarm["kind"] == "alarm"
+    assert alarm["scheduled_for"] == "Friday, 30 August 2030 at 6:00 AM Asia/Kolkata"
+    assert alarm["assumed_next_day"] is True
+    assert datetime.fromtimestamp(alarm["trigger_at"], ZoneInfo("Asia/Kolkata")) == datetime(
+        2030, 8, 30, 6, 0, tzinfo=ZoneInfo("Asia/Kolkata")
+    )
+
+
+def test_agent_lists_alarm_with_local_time(tmp_path):
+    agent = make_agent(tmp_path, clock=FixedClock())
+    created = agent.handle(text="Wake me at 6 AM")
+    listed = agent.handle(text="List my alarms", conversation_id=created["conversation_id"])
+    assert listed["tool"]["name"] == "list_alarms"
+    assert listed["tool"]["result"][0]["local_time"].endswith("6:00 AM Asia/Kolkata")
 
 
 def test_agent_uses_qwen_for_general_question(tmp_path):

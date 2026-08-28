@@ -261,6 +261,18 @@ async def root():
 
         "minimum_authority_confidence":
             authority_policy.minimum_authority_confidence,
+        "timezone": conversation_agent.clock.timezone_name,
+    }
+
+
+@app.get("/time")
+async def get_local_time():
+    now = conversation_agent.clock.now()
+    return {
+        "iso": now.isoformat(),
+        "timestamp": now.timestamp(),
+        "timezone": conversation_agent.clock.timezone_name,
+        "display": conversation_agent.clock.describe(now),
     }
 
 

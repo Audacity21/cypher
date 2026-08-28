@@ -73,6 +73,7 @@ ollama serve
 ```powershell
 Set-Location E:\cypher
 .\.venv\Scripts\Activate.ps1
+$env:CYPHER_TIMEZONE="Asia/Kolkata"
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -88,6 +89,8 @@ Open `http://127.0.0.1:5173/` in Chrome or Edge and allow microphone access.
 - “Cypher, what is the temperature?”
 - “Set the lights to yellow.”
 - “Set a timer for thirty seconds.”
+- “Set an alarm for 6 AM.”
+- “What time is it?”
 - “Remember that I prefer concise answers.”
 - “What do you remember?”
 - “Play Midnight City.”
