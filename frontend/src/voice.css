@@ -37,6 +37,51 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 h1 { margin: 8px 0; letter-spacing: 0.12em; }
 .status { color: #7aa7ff; letter-spacing: 0.14em; }
 
+.cypher-core {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  margin: 22px auto 30px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 22px rgba(101, 247, 209, 0.24));
+}
+
+.core-ring { position: absolute; border: 1px solid rgba(101, 247, 209, 0.45); border-radius: 50%; }
+.ring-one { inset: 8px; border-style: dashed; animation: spin 12s linear infinite; }
+.ring-two { inset: 28px; border-color: rgba(122, 167, 255, 0.5); animation: spin-reverse 8s linear infinite; }
+.ring-three { inset: 48px; border-width: 2px; }
+.core-center {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #031015;
+  background: #65f7d1;
+  font-size: 30px;
+  font-weight: 700;
+  box-shadow: 0 0 30px rgba(101, 247, 209, 0.5);
+}
+
+.cypher-core[data-state="listening"] .core-center { background: #7aa7ff; animation: pulse 0.9s ease-in-out infinite; }
+.cypher-core[data-state="thinking"] .ring-two { border-color: #c77dff; animation-duration: 1.2s; }
+.cypher-core[data-state="thinking"] .core-center { background: #c77dff; }
+.cypher-core[data-state="speaking"] .core-center { animation: speak-pulse 0.45s ease-in-out infinite alternate; }
+.cypher-core[data-state="error"] .core-center { background: #ff6b7a; }
+
+.system-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin-bottom: 24px;
+  background: rgba(101, 247, 209, 0.2);
+  border: 1px solid rgba(101, 247, 209, 0.2);
+}
+.system-strip div { padding: 10px; background: #061116; text-align: center; min-width: 0; }
+.system-strip span { display: block; color: #65f7d1; font-size: 9px; letter-spacing: 0.16em; }
+.system-strip strong { display: block; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+
 button, input {
   border: 1px solid rgba(101, 247, 209, 0.45);
   color: #eafffb;
@@ -58,7 +103,56 @@ form label { display: block; margin-bottom: 8px; }
 .exchange p { margin: 8px 0 0; line-height: 1.5; }
 .speak-toggle { display: flex; align-items: center; gap: 10px; }
 
+.history-panel { margin-top: 24px; border-top: 1px solid rgba(101, 247, 209, 0.2); padding-top: 18px; }
+.history-title { color: #65f7d1; font-size: 11px; letter-spacing: 0.16em; margin-bottom: 10px; }
+.history-list { max-height: 150px; overflow-y: auto; display: grid; gap: 7px; }
+.history-line { margin: 0; padding: 8px 10px; background: #041116; font-size: 13px; line-height: 1.35; }
+.history-line strong { color: #65f7d1; margin-right: 8px; }
+.history-empty { color: #58706f; font-size: 12px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin-reverse { to { transform: rotate(-360deg); } }
+@keyframes pulse { 50% { transform: scale(1.12); box-shadow: 0 0 45px rgba(122, 167, 255, 0.8); } }
+@keyframes speak-pulse { to { transform: scale(1.15); box-shadow: 0 0 48px rgba(101, 247, 209, 0.85); } }
+
 @media (max-width: 560px) {
   .voice-card { padding: 22px; }
   .message-row { flex-direction: column; }
+  .system-strip { grid-template-columns: 1fr; }
 }
+
+.embedded,
+.embedded body,
+.embedded .voice-shell {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.embedded .voice-shell { padding: 0; display: block; overflow: hidden; }
+.embedded .voice-card { width: 100%; padding: 0; border: 0; box-shadow: none; }
+.embedded .voice-card > .eyebrow,
+.embedded h1,
+.embedded .system-strip,
+.embedded .history-panel,
+.embedded .status,
+.embedded .cypher-core,
+.embedded .listen,
+.embedded .exchange,
+.embedded .speak-toggle { display: none; }
+.embedded .ring-one { inset: 3px; }
+.embedded .ring-two { inset: 13px; }
+.embedded .ring-three { inset: 23px; }
+.embedded .core-center { width: 34px; height: 34px; font-size: 16px; }
+.embedded .listen { margin: 8px 0 12px; padding: 8px; font-size: 10px; }
+.embedded form label { display:none; }
+.embedded .message-row{height:44px;gap:7px;flex-direction:row}
+.embedded .message-row input,
+.embedded .message-row button { height:44px;padding:0 10px;font-size:10px; }
+.embedded .message-row input{height:44px;min-width:0;flex:1;padding:0 11px;font-size:10px}
+.embedded .message-row button{width:68px;flex:none}
+.embedded .exchange { gap: 6px; margin: 12px 0; }
+.embedded .exchange div { padding: 8px; }
+.embedded .exchange p { font-size: 10px; margin-top: 4px; }
+.embedded .speak-toggle { font-size: 8px; }

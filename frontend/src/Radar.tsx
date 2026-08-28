@@ -1,449 +1,71 @@
-import {
-  Canvas,
-  useFrame,
-} from "@react-three/fiber";
-
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useRef } from "react";
 import * as THREE from "three";
 
-type RadarProps = {
-  distanceCm: number | null;
-  motion: string;
-  velocity: number;
-};
+function CognitionCore({ online }: { online: boolean }) {
+  const core = useRef<THREE.Group>(null);
+  const orbitA = useRef<THREE.Group>(null);
+  const orbitB = useRef<THREE.Group>(null);
+  const pulse = useRef<THREE.Mesh>(null);
+  const color = online ? "#65f7d1" : "#ff6b7a";
 
-type TrailPoint = {
-  y: number;
-  opacity: number;
-};
-
-const MAX_DISTANCE = 200;
-
-function RadarScene({
-  distanceCm,
-  motion,
-}: RadarProps) {
-  const sweepRef =
-    useRef<THREE.Group>(null);
-
-  const pulseRef =
-    useRef<THREE.Mesh>(null);
-
-  const [trail, setTrail] =
-    useState<TrailPoint[]>([]);
-
-  const normalizedDistance =
-    useMemo(() => {
-      if (distanceCm === null) {
-        return null;
-      }
-
-      const clamped =
-        Math.min(
-          Math.max(
-            distanceCm,
-            0
-          ),
-          MAX_DISTANCE
-        );
-
-      return (
-        clamped /
-        MAX_DISTANCE
-      );
-    }, [distanceCm]);
-
-  /*
-   * Origin is near the bottom.
-   * 0 cm   -> y = -2.5
-   * 200 cm -> y =  2.5
-   */
-  const targetY =
-    normalizedDistance === null
-      ? null
-      : -2.5 +
-        normalizedDistance * 5;
-
-  useEffect(() => {
-    if (targetY === null) {
-      return;
+  useFrame(({ clock }, delta) => {
+    const elapsed = clock.elapsedTime;
+    if (core.current) {
+      core.current.rotation.y += delta * 0.22;
+      core.current.rotation.x = Math.sin(elapsed * 0.35) * 0.18;
     }
-
-    setTrail(
-      (previous) => {
-        const updated =
-          previous.map(
-            (point) => ({
-              ...point,
-              opacity:
-                point.opacity *
-                0.72,
-            })
-          );
-
-        return [
-          {
-            y: targetY,
-            opacity: 0.7,
-          },
-          ...updated,
-        ].slice(0, 9);
-      }
-    );
-  }, [targetY]);
-
-  useFrame(
-    ({ clock }, delta) => {
-
-      if (
-        sweepRef.current
-      ) {
-        sweepRef.current.rotation.z -=
-          delta * 0.45;
-      }
-
-      if (
-        pulseRef.current
-      ) {
-        const pulse =
-          1 +
-          Math.sin(
-            clock.elapsedTime * 5
-          ) *
-            0.12;
-
-        pulseRef.current.scale.set(
-          pulse,
-          pulse,
-          pulse
-        );
-      }
+    if (orbitA.current) orbitA.current.rotation.z += delta * 0.17;
+    if (orbitB.current) orbitB.current.rotation.x -= delta * 0.12;
+    if (pulse.current) {
+      const scale = 1 + Math.sin(elapsed * 1.8) * 0.055;
+      pulse.current.scale.setScalar(scale);
     }
-  );
+  });
 
-  const targetColor =
-    motion === "APPROACHING"
-      ? "#ffb454"
-      : motion === "RECEDING"
-        ? "#7aa7ff"
-        : "#65f7d1";
+  return <>
+    <color attach="background" args={["#020910"]} />
+    <fog attach="fog" args={["#020910", 7, 13]} />
+    <ambientLight intensity={0.18} />
+    <pointLight position={[2, 3, 4]} color={color} intensity={7} distance={12} />
+    <gridHelper args={[14, 28, "#123e49", "#081d25"]} position={[0, -2.3, 0]} />
 
-  return (
-    <>
-
-      <ambientLight
-        intensity={0.5}
-      />
-
-      {/* Main range rings */}
-
-      {[0.75, 1.5, 2.25, 3].map(
-        (radius) => (
-          <mesh key={radius}>
-            <ringGeometry
-              args={[
-                radius - 0.008,
-                radius,
-                128,
-              ]}
-            />
-
-            <meshBasicMaterial
-              color="#4de8ff"
-              transparent
-              opacity={
-                radius === 3
-                  ? 0.26
-                  : 0.13
-              }
-              side={
-                THREE.DoubleSide
-              }
-            />
-          </mesh>
-        )
-      )}
-
-      {/* Crosshair */}
-
-      <mesh>
-        <planeGeometry
-          args={[0.012, 6]}
-        />
-
-        <meshBasicMaterial
-          color="#4de8ff"
-          transparent
-          opacity={0.09}
-        />
+    <group ref={core}>
+      <mesh ref={pulse}>
+        <icosahedronGeometry args={[1.22, 2]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.65} roughness={0.22} metalness={0.78} wireframe />
       </mesh>
+      <mesh><icosahedronGeometry args={[0.72, 2]} /><meshStandardMaterial color="#07171d" emissive={color} emissiveIntensity={1.6} roughness={0.18} metalness={0.85} /></mesh>
+      <mesh><octahedronGeometry args={[0.34, 0]} /><meshBasicMaterial color="#e9ffff" /></mesh>
+    </group>
 
-      <mesh>
-        <planeGeometry
-          args={[6, 0.012]}
-        />
+    <group ref={orbitA} rotation={[Math.PI / 2.6, 0.2, 0]}>
+      <mesh><torusGeometry args={[1.75, 0.012, 8, 160]} /><meshBasicMaterial color="#57e5ff" transparent opacity={0.7} /></mesh>
+      {[0, 1, 2].map(index => <mesh key={index} position={[Math.cos(index * Math.PI * 2 / 3) * 1.75, Math.sin(index * Math.PI * 2 / 3) * 1.75, 0]}>
+        <boxGeometry args={[0.12, 0.12, 0.12]} /><meshBasicMaterial color="#7aa7ff" />
+      </mesh>)}
+    </group>
 
-        <meshBasicMaterial
-          color="#4de8ff"
-          transparent
-          opacity={0.09}
-        />
-      </mesh>
+    <group ref={orbitB} rotation={[0.3, Math.PI / 2, 0.5]}>
+      <mesh><torusGeometry args={[2.25, 0.008, 8, 180, Math.PI * 1.55]} /><meshBasicMaterial color="#7aa7ff" transparent opacity={0.38} /></mesh>
+    </group>
 
-      {/* Diagonal HUD guides */}
-
-      <mesh
-        rotation={[
-          0,
-          0,
-          Math.PI / 4,
-        ]}
-      >
-        <planeGeometry
-          args={[0.008, 6]}
-        />
-
-        <meshBasicMaterial
-          color="#4de8ff"
-          transparent
-          opacity={0.035}
-        />
-      </mesh>
-
-      <mesh
-        rotation={[
-          0,
-          0,
-          -Math.PI / 4,
-        ]}
-      >
-        <planeGeometry
-          args={[0.008, 6]}
-        />
-
-        <meshBasicMaterial
-          color="#4de8ff"
-          transparent
-          opacity={0.035}
-        />
-      </mesh>
-
-      {/* Sweep */}
-
-      <group ref={sweepRef}>
-
-        <mesh
-          position={[
-            0,
-            1.5,
-            0.01,
-          ]}
-        >
-          <planeGeometry
-            args={[0.025, 3]}
-          />
-
-          <meshBasicMaterial
-            color="#4de8ff"
-            transparent
-            opacity={0.62}
-          />
-        </mesh>
-
-        <mesh
-          position={[
-            -0.1,
-            1.4,
-            -0.01,
-          ]}
-          rotation={[
-            0,
-            0,
-            0.07,
-          ]}
-        >
-          <planeGeometry
-            args={[0.15, 2.8]}
-          />
-
-          <meshBasicMaterial
-            color="#4de8ff"
-            transparent
-            opacity={0.035}
-          />
-        </mesh>
-
-      </group>
-
-      {/* Trail */}
-
-      {trail.map(
-        (point, index) => (
-          <mesh
-            key={
-              `${index}-${point.y}`
-            }
-            position={[
-              0,
-              point.y,
-              0.025,
-            ]}
-          >
-            <circleGeometry
-              args={[
-                0.05,
-                24,
-              ]}
-            />
-
-            <meshBasicMaterial
-              color={targetColor}
-              transparent
-              opacity={
-                point.opacity
-              }
-            />
-          </mesh>
-        )
-      )}
-
-      {/* Target */}
-
-      {targetY !== null && (
-        <group
-          position={[
-            0,
-            targetY,
-            0.08,
-          ]}
-        >
-
-          <mesh
-            ref={pulseRef}
-          >
-            <ringGeometry
-              args={[
-                0.13,
-                0.16,
-                48,
-              ]}
-            />
-
-            <meshBasicMaterial
-              color={targetColor}
-              transparent
-              opacity={0.7}
-              side={
-                THREE.DoubleSide
-              }
-            />
-          </mesh>
-
-          <mesh>
-            <circleGeometry
-              args={[
-                0.055,
-                32,
-              ]}
-            />
-
-            <meshBasicMaterial
-              color="#ffffff"
-            />
-          </mesh>
-
-        </group>
-      )}
-
-      {/* Sensor origin */}
-
-      <group
-        position={[
-          0,
-          -2.82,
-          0.1,
-        ]}
-      >
-
-        <mesh>
-          <circleGeometry
-            args={[0.1, 32]}
-          />
-
-          <meshBasicMaterial
-            color="#4de8ff"
-          />
-        </mesh>
-
-        <mesh>
-          <ringGeometry
-            args={[
-              0.15,
-              0.17,
-              48,
-            ]}
-          />
-
-          <meshBasicMaterial
-            color="#4de8ff"
-            transparent
-            opacity={0.5}
-          />
-        </mesh>
-
-      </group>
-
-    </>
-  );
+    {[2.7, 3.05, 3.4].map((radius, index) => <mesh key={radius} rotation={[Math.PI / 2, index * 0.34, 0]}>
+      <torusGeometry args={[radius, 0.006, 6, 180, Math.PI * (1.15 + index * 0.18)]} />
+      <meshBasicMaterial color="#24697a" transparent opacity={0.25 - index * 0.04} />
+    </mesh>)}
+  </>;
 }
 
-export default function Radar(
-  props: RadarProps
-) {
-  return (
-    <div className="radar-canvas">
-      <Canvas
-        orthographic
-        dpr={[1, 2]}
-        camera={{
-          position: [
-            0,
-            0,
-            10,
-          ],
-          zoom: 82,
-        }}
-      >
-        <RadarScene
-          {...props}
-        />
-      </Canvas>
-
-      <div className="radar-overlay">
-
-        <span className="range-label range-50">
-          50
-        </span>
-
-        <span className="range-label range-100">
-          100
-        </span>
-
-        <span className="range-label range-150">
-          150
-        </span>
-
-        <span className="range-label range-200">
-          200 CM
-        </span>
-
-      </div>
+export default function Radar({ online }: { online: boolean }) {
+  return <div className="digital-twin cognition-visual">
+    <Canvas camera={{ position: [4.7, 3.2, 6.4], fov: 42 }} dpr={1} gl={{ antialias: true, powerPreference: "high-performance" }}>
+      <CognitionCore online={online} />
+    </Canvas>
+    <div className="twin-readout cognition-readout">
+      <span>CYPHER COGNITION MATRIX</span>
+      <strong>{online ? "CORE SYNCHRONIZED" : "CORE DISCONNECTED"}</strong>
+      <em>LOCAL // GUARDED // PERSISTENT</em>
     </div>
-  );
+  </div>;
 }

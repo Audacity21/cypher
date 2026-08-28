@@ -34,12 +34,23 @@ class ActionEngine:
 
         # Environment became dark
         "DARK": (25, 0, 60),
+
+        # Explicit user-selectable colours (brightness-capped).
+        "YELLOW": (60, 38, 0),
+        "ORANGE": (60, 16, 0),
+        "CYAN": (0, 52, 52),
+        "MAGENTA": (52, 0, 52),
+        "PINK": (60, 8, 22),
+        "TEAL": (0, 42, 34),
     }
 
     SOUND_PATTERNS = {
         "PRESENCE": [(880, 90)],
         "SUCCESS": [(784, 100), (1047, 140)],
-        "ALERT": [(440, 220), (660, 220), (440, 220)],
+        "ALERT": [
+            (880, 180), (660, 180), (880, 180), (660, 180),
+            (1047, 320), (784, 220), (1047, 420),
+        ],
     }
 
     def __init__(
@@ -151,3 +162,13 @@ class ActionEngine:
 
     def stop_sound(self) -> dict:
         return self.hardware.stop_buzzer()
+
+    def security_alarm(self) -> dict:
+        colors = ["ALERT", "YELLOW", "PRESENCE", "MAGENTA"]
+        played = []
+        for index, (frequency_hz, duration_ms) in enumerate(self.SOUND_PATTERNS["ALERT"]):
+            self.set_status(colors[index % len(colors)])
+            played.append(self.hardware.play_tone(frequency_hz, duration_ms))
+            time.sleep((duration_ms + 55) / 1000)
+        self.alert()
+        return {"sound": "SECURITY_ALARM", "tones": played, "lighting": "DISCO_ALERT"}

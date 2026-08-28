@@ -1,1128 +1,166 @@
 import { useEffect, useState } from "react";
-
 import Radar from "./Radar";
 
-
-type SensorMessage = {
-  type: string;
-  event?: string;
-  timestamp?: number;
-
-  data?: {
-    distance_cm?: number;
-    smoothed_distance_cm?: number;
-    velocity_cm_s?: number;
-    motion?: string;
-
-    light_raw?: number;
-    light_percent?: number;
-    light_state?: string;
-
-    temperature_c?: number;
-    temperature_state?: string;
-
-    humidity_percent?: number;
-    humidity_state?: string;
-
-    total?: number;
-    agreements?: number;
-    disagreements?: number;
-    agreement_rate?: number;
-
-    guard_accepted?: number;
-    guard_blocked?: number;
-    guard_acceptance_rate?: number;
-
-    last_authoritative_intent?: string | null;
-    last_shadow_intent?: string | null;
-    last_shadow_confidence?: number | null;
-    last_agreement?: boolean | null;
-
-    last_guard_allowed?: boolean | null;
-    last_guard_reason?: string | null;
-  };
-
-  decision?: {
-    intent?: string;
-    reason?: string;
-    confidence?: number;
-    valid?: boolean;
-    agreement?: boolean;
-    model?: string;
-
-    guard_allowed?: boolean;
-    guard_reason?: string;
-  };
+type WorldData = {
+  smoothed_distance_cm?: number; velocity_cm_s?: number; motion?: string;
+  light?: number; light_raw?: number; light_percent?: number; light_state?: string;
+  temperature_c?: number; temperature_state?: string;
+  humidity_percent?: number; humidity_state?: string;
 };
+type StreamMessage = { type: string; event?: string; timestamp?: number; data?: WorldData };
+type CypherEvent = { event: string; timestamp: number };
 
+const value = (number: number | null, digits = 1) => number === null ? "---" : number.toFixed(digits);
 
-type CypherEvent = {
-  event: string;
-  timestamp: number;
-};
-
-
-function App() {
-  // =========================================================
-  // WORLD STATE
-  // =========================================================
-
-  const [distance, setDistance] =
-    useState<number | null>(null);
-
-  const [velocity, setVelocity] =
-    useState(0);
-
-  const [motion, setMotion] =
-    useState("UNKNOWN");
-
-  const [light, setLight] =
-    useState<number | null>(null);
-
-  const [lightPercent, setLightPercent] =
-    useState<number | null>(null);
-
-  const [lightState, setLightState] =
-    useState("UNKNOWN");
-
-  const [temperature, setTemperature] =
-    useState<number | null>(null);
-
-  const [
-    temperatureState,
-    setTemperatureState,
-  ] = useState("UNKNOWN");
-
-  const [humidity, setHumidity] =
-    useState<number | null>(null);
-
-  const [
-    humidityState,
-    setHumidityState,
-  ] = useState("UNKNOWN");
-
-
-  // =========================================================
-  // CONNECTION
-  // =========================================================
-
-  const [connected, setConnected] =
-    useState(false);
-
-
-  // =========================================================
-  // EVENT STREAM
-  // =========================================================
-
-  const [events, setEvents] =
-    useState<CypherEvent[]>([]);
-
-
-  // =========================================================
-  // SHADOW AI METRICS
-  // =========================================================
-
-  const [shadowTotal, setShadowTotal] =
-    useState(0);
-
-  const [
-    shadowAgreements,
-    setShadowAgreements,
-  ] = useState(0);
-
-  const [
-    shadowDisagreements,
-    setShadowDisagreements,
-  ] = useState(0);
-
-  const [
-    shadowAgreementRate,
-    setShadowAgreementRate,
-  ] = useState(0);
-
-
-  // =========================================================
-  // LAST SHADOW DECISION
-  // =========================================================
-
-  const [
-    shadowAuthoritative,
-    setShadowAuthoritative,
-  ] = useState<string | null>(null);
-
-  const [
-    shadowIntent,
-    setShadowIntent,
-  ] = useState<string | null>(null);
-
-  const [
-    shadowConfidence,
-    setShadowConfidence,
-  ] = useState<number | null>(null);
-
-  const [
-    shadowAgreement,
-    setShadowAgreement,
-  ] = useState<boolean | null>(null);
-
-
-  // =========================================================
-  // GUARD METRICS
-  // =========================================================
-
-  const [
-    guardAccepted,
-    setGuardAccepted,
-  ] = useState(0);
-
-  const [
-    guardBlocked,
-    setGuardBlocked,
-  ] = useState(0);
-
-  const [
-    guardAcceptanceRate,
-    setGuardAcceptanceRate,
-  ] = useState(0);
-
-  const [
-    lastGuardAllowed,
-    setLastGuardAllowed,
-  ] = useState<boolean | null>(null);
-
-  const [
-    lastGuardReason,
-    setLastGuardReason,
-  ] = useState<string | null>(null);
-
-
-  // =========================================================
-  // WEBSOCKET
-  // =========================================================
+export default function App() {
+  const [connected, setConnected] = useState(false);
+  const [distance, setDistance] = useState<number | null>(null);
+  const [velocity, setVelocity] = useState<number | null>(null);
+  const [motion, setMotion] = useState("UNKNOWN");
+  const [lightRaw, setLightRaw] = useState<number | null>(null);
+  const [lightPercent, setLightPercent] = useState<number | null>(null);
+  const [lightState, setLightState] = useState("UNKNOWN");
+  const [temperature, setTemperature] = useState<number | null>(null);
+  const [temperatureState, setTemperatureState] = useState("UNKNOWN");
+  const [humidity, setHumidity] = useState<number | null>(null);
+  const [humidityState, setHumidityState] = useState("UNKNOWN");
+  const [events, setEvents] = useState<CypherEvent[]>([]);
 
   useEffect(() => {
-    const socket = new WebSocket(
-      "ws://127.0.0.1:8000/ws/sensors"
-    );
-
-
-    socket.onopen = () => {
-      setConnected(true);
+    let socket: WebSocket;
+    let retry: number;
+    const connect = () => {
+      socket = new WebSocket("ws://127.0.0.1:8000/ws/sensors");
+      socket.onopen = () => setConnected(true);
+      socket.onerror = () => setConnected(false);
+      socket.onclose = () => { setConnected(false); retry = window.setTimeout(connect, 1500); };
+      socket.onmessage = ({ data: raw }) => {
+        const message = JSON.parse(raw) as StreamMessage;
+        if (message.type === "world_state" && message.data) {
+          const data = message.data;
+          if (data.smoothed_distance_cm !== undefined) setDistance(data.smoothed_distance_cm);
+          if (data.velocity_cm_s !== undefined) setVelocity(data.velocity_cm_s);
+          if (data.motion !== undefined) setMotion(data.motion);
+          if (data.light_raw !== undefined) setLightRaw(data.light_raw);
+          else if (data.light !== undefined) setLightRaw(data.light);
+          if (data.light_percent !== undefined) setLightPercent(data.light_percent);
+          if (data.light_state !== undefined) setLightState(data.light_state);
+          if (data.temperature_c !== undefined) setTemperature(data.temperature_c);
+          if (data.temperature_state !== undefined) setTemperatureState(data.temperature_state);
+          if (data.humidity_percent !== undefined) setHumidity(data.humidity_percent);
+          if (data.humidity_state !== undefined) setHumidityState(data.humidity_state);
+        }
+        if (message.type === "event" && message.event && message.timestamp) {
+          setEvents(previous => [{ event: message.event!, timestamp: message.timestamp! }, ...previous].slice(0, 5));
+        }
+      };
     };
-
-
-    socket.onclose = () => {
-      setConnected(false);
-    };
-
-
-    socket.onerror = () => {
-      setConnected(false);
-    };
-
-
-    socket.onmessage = (event) => {
-      const message: SensorMessage =
-        JSON.parse(event.data);
-
-
-      // =====================================================
-      // WORLD STATE
-      // =====================================================
-
-      if (
-        message.type === "world_state" &&
-        message.data
-      ) {
-        const data = message.data;
-
-
-        if (
-          data.smoothed_distance_cm !==
-          undefined
-        ) {
-          setDistance(
-            data.smoothed_distance_cm
-          );
-        }
-
-
-        if (
-          data.velocity_cm_s !==
-          undefined
-        ) {
-          setVelocity(
-            data.velocity_cm_s
-          );
-        }
-
-
-        if (
-          data.motion !== undefined
-        ) {
-          setMotion(
-            data.motion
-          );
-        }
-
-
-        if (
-          data.light_raw !== undefined
-        ) {
-          setLight(
-            data.light_raw
-          );
-        }
-
-
-        if (
-          data.light_percent !== undefined
-        ) {
-          setLightPercent(
-            data.light_percent
-          );
-        }
-
-
-        if (
-          data.light_state !== undefined
-        ) {
-          setLightState(
-            data.light_state
-          );
-        }
-
-
-        if (
-          data.temperature_c !== undefined
-        ) {
-          setTemperature(
-            data.temperature_c
-          );
-        }
-
-
-        if (
-          data.temperature_state !==
-          undefined
-        ) {
-          setTemperatureState(
-            data.temperature_state
-          );
-        }
-
-
-        if (
-          data.humidity_percent !== undefined
-        ) {
-          setHumidity(
-            data.humidity_percent
-          );
-        }
-
-
-        if (
-          data.humidity_state !== undefined
-        ) {
-          setHumidityState(
-            data.humidity_state
-          );
-        }
-
-        return;
-      }
-
-
-      // =====================================================
-      // EVENTS
-      // =====================================================
-
-      if (
-        message.type === "event" &&
-        message.event &&
-        message.timestamp
-      ) {
-        const newEvent: CypherEvent = {
-          event: message.event,
-          timestamp: message.timestamp,
-        };
-
-        setEvents(
-          (previous) => [
-            newEvent,
-            ...previous,
-          ].slice(0, 6)
-        );
-
-        return;
-      }
-
-
-      // =====================================================
-      // SHADOW METRICS
-      // =====================================================
-
-      if (
-        message.type === "shadow_metrics" &&
-        message.data
-      ) {
-        const data = message.data;
-
-
-        setShadowTotal(
-          data.total ?? 0
-        );
-
-        setShadowAgreements(
-          data.agreements ?? 0
-        );
-
-        setShadowDisagreements(
-          data.disagreements ?? 0
-        );
-
-        setShadowAgreementRate(
-          data.agreement_rate ?? 0
-        );
-
-
-        setGuardAccepted(
-          data.guard_accepted ?? 0
-        );
-
-        setGuardBlocked(
-          data.guard_blocked ?? 0
-        );
-
-        setGuardAcceptanceRate(
-          data.guard_acceptance_rate ?? 0
-        );
-
-
-        setShadowAuthoritative(
-          data.last_authoritative_intent
-          ?? null
-        );
-
-        setShadowIntent(
-          data.last_shadow_intent
-          ?? null
-        );
-
-        setShadowConfidence(
-          data.last_shadow_confidence
-          ?? null
-        );
-
-        setShadowAgreement(
-          data.last_agreement
-          ?? null
-        );
-
-
-        setLastGuardAllowed(
-          data.last_guard_allowed
-          ?? null
-        );
-
-        setLastGuardReason(
-          data.last_guard_reason
-          ?? null
-        );
-
-        return;
-      }
-
-
-      // =====================================================
-      // SHADOW DECISION
-      // =====================================================
-
-      if (
-        message.type ===
-          "shadow_intelligence" &&
-        message.decision
-      ) {
-        const decision =
-          message.decision;
-
-
-        if (
-          decision.intent !== undefined
-        ) {
-          setShadowIntent(
-            decision.intent
-          );
-        }
-
-
-        if (
-          decision.confidence !==
-          undefined
-        ) {
-          setShadowConfidence(
-            decision.confidence
-          );
-        }
-
-
-        if (
-          decision.agreement !==
-          undefined
-        ) {
-          setShadowAgreement(
-            decision.agreement
-          );
-        }
-
-
-        if (
-          decision.guard_allowed !==
-          undefined
-        ) {
-          setLastGuardAllowed(
-            decision.guard_allowed
-          );
-        }
-
-
-        if (
-          decision.guard_reason !==
-          undefined
-        ) {
-          setLastGuardReason(
-            decision.guard_reason
-          );
-        }
-
-        return;
-      }
-    };
-
-
-    return () => {
-      socket.close();
-    };
+    connect();
+    return () => { window.clearTimeout(retry); socket?.close(); };
   }, []);
 
+  return <main className="command-shell">
+    <div className="command-grid-bg" />
+    <header className="command-header">
+      <div><span>LOCAL ROOM INTELLIGENCE</span><h1>CYPHER</h1></div>
+      <div className={connected ? "system-live" : "system-down"}><i />{connected ? "SYSTEM ONLINE" : "RECONNECTING"}</div>
+    </header>
 
-  // =========================================================
-  // DISPLAY HELPERS
-  // =========================================================
+    <section className="command-layout">
+      <aside className="telemetry-rail">
+        <div className="rail-title">ROOM TELEMETRY</div>
+        <Metric label="ULTRASONIC RANGE" reading={value(distance)} unit="CM" accent />
+        <Metric label="MOTION" reading={motion} />
+        <Metric label="VELOCITY" reading={value(velocity)} unit="CM/S" />
+        <div className="rail-rule" />
+        <Metric label="AMBIENT LIGHT" reading={lightPercent === null ? "---" : `${lightPercent}`} unit="%" />
+        <Metric label="LIGHT CLASS" reading={lightState} />
+        <Metric label="RAW // A0" reading={lightRaw === null ? "---" : `${lightRaw}`} />
+        <div className="rail-rule" />
+        <Metric label="TEMPERATURE" reading={value(temperature)} unit="°C" accent />
+        <Metric label="THERMAL CLASS" reading={temperatureState} />
+        <Metric label="HUMIDITY" reading={value(humidity)} unit="%" />
+        <Metric label="AIR CLASS" reading={humidityState} />
+      </aside>
 
-  const motionClass =
-    motion.toLowerCase();
-
-
-  const agreementClass =
-    shadowAgreement === null
-      ? ""
-      : shadowAgreement
-        ? "ai-agree"
-        : "ai-disagree";
-
-
-  const guardClass =
-    lastGuardAllowed === null
-      ? ""
-      : lastGuardAllowed
-        ? "ai-agree"
-        : "ai-disagree";
-
-
-  return (
-    <main className="app-shell">
-
-      <div className="background-grid" />
-
-
-      {/* ====================================================
-          HEADER
-          ==================================================== */}
-
-      <header className="topbar">
-
-        <div>
-          <div className="eyebrow">
-            LOCAL INTELLIGENCE SYSTEM
-          </div>
-
-          <div className="brand">
-            CYPHER
-          </div>
+      <section className="spatial-stage">
+        <div className="stage-heading"><span>COGNITION CORE</span><strong>THREE.JS SYSTEM MATRIX</strong></div>
+        <Radar online={connected} />
+        <div className="stage-strip">
+          <span>REASONING <b>LOCAL QWEN</b></span><span>CONTEXT <b>PERSISTENT</b></span><span>ENVIRONMENT <b>{lightState}</b></span>
         </div>
-
-
-        <div
-          className={
-            connected
-              ? "connection online"
-              : "connection offline"
-          }
-        >
-          <span className="status-dot" />
-
-          {connected
-            ? "PERCEPTION ONLINE"
-            : "PERCEPTION OFFLINE"}
-        </div>
-
-      </header>
-
-
-      {/* ====================================================
-          MAIN WORKSPACE
-          ==================================================== */}
-
-      <section className="workspace">
-
-
-        {/* ==================================================
-            LEFT — SENSOR STATE
-            ================================================== */}
-
-        <aside className="side-panel left-panel">
-
-          <PanelBlock
-            label="RANGE"
-            value={
-              distance !== null
-                ? distance.toFixed(1)
-                : "--.-"
-            }
-            unit="CM"
-          />
-
-
-          <PanelBlock
-            label="MOTION"
-            value={motion}
-            className={motionClass}
-          />
-
-
-          <PanelBlock
-            label="VELOCITY"
-            value={
-              Math.abs(
-                velocity
-              ).toFixed(1)
-            }
-            unit="CM/S"
-          />
-
-
-          <div className="divider" />
-
-
-          <PanelBlock
-            label="AMBIENT LIGHT"
-            value={
-              lightPercent !== null
-                ? lightPercent.toString()
-                : "---"
-            }
-            unit="%"
-          />
-
-
-          <PanelBlock
-            label="LIGHT STATE"
-            value={lightState}
-          />
-
-
-          <div className="divider" />
-
-
-          <div className="mini-label">
-            RAW LIGHT
-          </div>
-
-          <div className="sensor-name">
-            {light !== null
-              ? light
-              : "---"}
-          </div>
-
-
-          <div className="mini-label top-gap">
-            LIGHT SENSOR
-          </div>
-
-          <div className="sensor-name">
-            LDR // A0
-          </div>
-
-        </aside>
-
-
-        {/* ==================================================
-            CENTER — RADAR
-            ================================================== */}
-
-        <section className="radar-zone">
-
-          <div className="radar-title">
-            PERCEPTION // ULTRASONIC
-          </div>
-
-
-          <div className="radar-frame">
-
-            <Radar
-              distanceCm={distance}
-              motion={motion}
-              velocity={velocity}
-            />
-
-          </div>
-
-
-          <div className="radar-footer">
-
-            <div>
-              RANGE LIMIT
-
-              <strong>
-                200 CM
-              </strong>
-            </div>
-
-
-            <div>
-              LIGHT
-
-              <strong>
-                {lightState}
-              </strong>
-            </div>
-
-
-            <div>
-              AI SHADOW
-
-              <strong>
-                {shadowAgreementRate.toFixed(1)}%
-              </strong>
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* ==================================================
-            RIGHT — AI / ENVIRONMENT
-            ================================================== */}
-
-        <aside className="side-panel right-panel">
-
-
-          {/* =================================================
-              ENVIRONMENT
-              ================================================= */}
-
-          <div className="panel-heading">
-            ENVIRONMENT
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              TEMPERATURE
-            </span>
-
-            <strong>
-              {temperature !== null
-                ? `${temperature.toFixed(1)}°C`
-                : "---"}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              TEMP STATE
-            </span>
-
-            <strong>
-              {temperatureState}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              HUMIDITY
-            </span>
-
-            <strong>
-              {humidity !== null
-                ? `${humidity.toFixed(1)}%`
-                : "---"}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              HUMIDITY STATE
-            </span>
-
-            <strong>
-              {humidityState}
-            </strong>
-          </div>
-
-
-          <div className="divider" />
-
-
-          {/* =================================================
-              AI SHADOW
-              ================================================= */}
-
-          <div className="panel-heading">
-            AI SHADOW // QWEN
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              MODE
-            </span>
-
-            <strong>
-              SHADOW
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              DECISIONS
-            </span>
-
-            <strong>
-              {shadowTotal}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              AGREEMENT
-            </span>
-
-            <strong>
-              {shadowAgreementRate.toFixed(1)}%
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              AGREE / DISAGREE
-            </span>
-
-            <strong>
-              {shadowAgreements}
-              {" / "}
-              {shadowDisagreements}
-            </strong>
-          </div>
-
-
-          {/* =================================================
-              GUARD METRICS
-              ================================================= */}
-
-          <div className="analysis-row">
-            <span>
-              GUARD PASS
-            </span>
-
-            <strong>
-              {guardAcceptanceRate.toFixed(1)}%
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              ACCEPT / BLOCK
-            </span>
-
-            <strong>
-              {guardAccepted}
-              {" / "}
-              {guardBlocked}
-            </strong>
-          </div>
-
-
-          <div className="divider" />
-
-
-          {/* =================================================
-              LAST DECISION
-              ================================================= */}
-
-          <div className="panel-heading">
-            LAST DECISION
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              RULE ENGINE
-            </span>
-
-            <strong>
-              {shadowAuthoritative ?? "---"}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              QWEN
-            </span>
-
-            <strong>
-              {shadowIntent ?? "---"}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              CONFIDENCE
-            </span>
-
-            <strong>
-              {shadowConfidence !== null
-                ? `${(
-                    shadowConfidence * 100
-                  ).toFixed(0)}%`
-                : "---"}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              RESULT
-            </span>
-
-            <strong
-              className={
-                agreementClass
-              }
-            >
-              {shadowAgreement === null
-                ? "---"
-                : shadowAgreement
-                  ? "AGREE"
-                  : "DISAGREE"}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              GUARD
-            </span>
-
-            <strong
-              className={
-                guardClass
-              }
-            >
-              {lastGuardAllowed === null
-                ? "---"
-                : lastGuardAllowed
-                  ? "ACCEPTED"
-                  : "BLOCKED"}
-            </strong>
-          </div>
-
-
-          <div className="analysis-row">
-            <span>
-              GUARD REASON
-            </span>
-
-            <strong>
-              {lastGuardReason ?? "---"}
-            </strong>
-          </div>
-
-
-          <div className="divider" />
-
-
-          {/* =================================================
-              EVENTS
-              ================================================= */}
-
-          <div className="panel-heading">
-            LIVE EVENT STREAM
-          </div>
-
-
-          <div className="event-stream">
-
-            {events.length === 0 ? (
-
-              <div className="event-empty">
-                NO EVENTS
-              </div>
-
-            ) : (
-
-              events.map(
-                (item, index) => (
-
-                  <div
-                    className="event-row"
-                    key={
-                      `${item.timestamp}-${index}`
-                    }
-                  >
-
-                    <span className="event-time">
-                      {formatTime(
-                        item.timestamp
-                      )}
-                    </span>
-
-
-                    <strong>
-                      {formatEventName(
-                        item.event
-                      )}
-                    </strong>
-
-                  </div>
-
-                )
-              )
-
-            )}
-
-          </div>
-
-        </aside>
-
       </section>
 
-
-      {/* ====================================================
-          FOOTER
-          ==================================================== */}
-
-      <footer className="bottom-bar">
-
-        <div>
-          CYPHER // INTELLIGENCE CORE
+      <aside className="interaction-rail">
+        <div className="rail-title">CYPHER INTERFACE</div>
+        <iframe className="unified-voice" src="/voice.html?embedded=1" title="Cypher voice interface" allow="microphone" />
+        <MusicDock />
+        <SystemMatrix
+          connected={connected}
+          sensorsOnline={distance !== null || lightRaw !== null || temperature !== null}
+        />
+        <div className="event-heading"><span>EVENT TRACE</span><b>{events.length.toString().padStart(2, "0")}</b></div>
+        <div className="compact-events">
+          {events.length === 0 ? <p>AWAITING ROOM EVENT</p> : events.map(item => <div key={`${item.timestamp}-${item.event}`}><time>{new Date(item.timestamp * 1000).toLocaleTimeString([], { hour12: false })}</time><strong>{item.event.replaceAll("_", " ")}</strong></div>)}
         </div>
+      </aside>
+    </section>
 
-
-        <div className="bottom-center">
-          <span />
-
-          GUARDED QWEN SHADOW
-
-          <span />
-        </div>
-
-
-        <div>
-          BUILD 0.8
-        </div>
-
-      </footer>
-
-    </main>
-  );
+    <footer className="command-footer"><span>CYPHER // BUILD 1.0</span><strong>VOICE · MEMORY · PERCEPTION · CONTROL</strong><span>LOCAL AUTHORITY</span></footer>
+  </main>;
 }
 
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-function formatTime(
-  timestamp: number
-) {
-  return new Date(
-    timestamp * 1000
-  ).toLocaleTimeString(
-    [],
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }
-  );
-}
-
-
-function formatEventName(
-  event: string
-) {
-  return event.replaceAll(
-    "_",
-    " "
-  );
-}
-
-
-// ============================================================
-// PANEL BLOCK
-// ============================================================
-
-type PanelBlockProps = {
-  label: string;
-  value: string;
-  unit?: string;
-  className?: string;
-};
-
-
-function PanelBlock({
-  label,
-  value,
-  unit,
-  className = "",
-}: PanelBlockProps) {
-  return (
-    <div className="metric">
-
-      <div className="metric-label">
-        {label}
-      </div>
-
-      <div
-        className={
-          `metric-value ${className}`
-        }
-      >
-        {value}
-
-        {unit && (
-          <span>
-            {unit}
-          </span>
-        )}
-
-      </div>
-
+function SystemMatrix({ connected, sensorsOnline }: { connected: boolean; sensorsOnline: boolean }) {
+  const systems = [
+    ["BACKEND", connected ? "ONLINE" : "OFFLINE", connected],
+    ["ARDUINO", sensorsOnline ? "STREAMING" : "WAITING", sensorsOnline],
+    ["PERCEPTION", sensorsOnline ? "ACTIVE" : "STANDBY", sensorsOnline],
+    ["VOICE", "WAKE ARMED", true],
+    ["MEMORY", "SQLITE ACTIVE", true],
+    ["MUSIC", "SINGLE TAB", true],
+    ["REASONING", "QWEN LOCAL", true],
+    ["AUTHORITY", "GUARDED", true],
+  ] as const;
+  return <section className="system-matrix">
+    <div className="system-matrix-title">ACTIVE SYSTEMS <b>{systems.filter(item => item[2]).length}/{systems.length}</b></div>
+    <div className="system-matrix-grid">
+      {systems.map(([name, status, active]) => <div className={active ? "active" : "inactive"} key={name}><i /><span>{name}</span><strong>{status}</strong></div>)}
     </div>
-  );
+  </section>;
 }
 
+function MusicDock() {
+  const [source, setSource] = useState("");
+  const [embed, setEmbed] = useState("");
+  const [nowPlaying, setNowPlaying] = useState("STANDBY");
 
-export default App;
+  useEffect(() => {
+    const receiveCommand = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "CYPHER_STOP_MUSIC") {
+        setSource("");
+        setEmbed("");
+        setNowPlaying("STANDBY");
+        return;
+      }
+      if (event.data?.type !== "CYPHER_PLAY_MUSIC") return;
+      const videoId = typeof event.data.videoId === "string" ? event.data.videoId : "";
+      if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return;
+      const title = typeof event.data.title === "string" ? event.data.title : "TRACK";
+      const watchUrl = typeof event.data.watchUrl === "string" ? event.data.watchUrl : `https://music.youtube.com/watch?v=${videoId}`;
+      setSource(watchUrl);
+      setNowPlaying(title.toUpperCase());
+      setEmbed(`https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&controls=1&playsinline=1&rel=0&origin=${encodeURIComponent(window.location.origin)}`);
+    };
+    window.addEventListener("message", receiveCommand);
+    return () => window.removeEventListener("message", receiveCommand);
+  }, []);
+  return <section className="music-dock">
+    <div><span>YOUTUBE MUSIC // {nowPlaying}</span>{source && <a href={source} target="_blank" rel="noreferrer">OPEN TRACK</a>}</div>
+    {embed ? <iframe key={embed} src={embed} title="Cypher music player" allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" /> : <p>ASK CYPHER TO PLAY A SONG</p>}
+  </section>;
+}
+
+function Metric({ label, reading, unit, accent = false }: { label: string; reading: string; unit?: string; accent?: boolean }) {
+  return <div className={`rail-metric${accent ? " accent" : ""}`}><span>{label}</span><strong>{reading}{unit && <small>{unit}</small>}</strong></div>;
+}

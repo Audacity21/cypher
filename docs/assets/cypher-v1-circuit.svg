@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Cypher V1 electrical wiring diagram</title>
+  <desc id="desc">Arduino UNO R4 Minima connected to HC-SR04, LDR divider, DHT11, common-cathode RGB LED, and passive buzzer.</desc>
+  <defs>
+    <style>
+      .box{fill:#fff;stroke:#17212b;stroke-width:3}.controller{fill:#f2f7fa;stroke:#17212b;stroke-width:4}.label{font:700 24px Arial,sans-serif;fill:#111b24}.small{font:18px Arial,sans-serif;fill:#263540}.pin{font:700 19px Consolas,monospace;fill:#17212b}.signal{fill:none;stroke:#1976a3;stroke-width:4}.power{fill:none;stroke:#d83a3a;stroke-width:5}.ground{fill:none;stroke:#20262c;stroke-width:5}.rgb-r{stroke:#d72f36}.rgb-g{stroke:#16974b}.rgb-b{stroke:#286bd6}.rail{font:700 22px Arial,sans-serif}.node{stroke:none}.resistor{fill:none;stroke-width:3}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="#fbfcfd"/>
+  <text x="800" y="54" text-anchor="middle" class="label" font-size="32">CYPHER V1 — CIRCUIT WIRING</text>
+
+  <path class="power" d="M50 95H1510"/><text x="10" y="82" class="rail" fill="#d83a3a">5 V</text>
+  <path class="ground" d="M90 845H1510"/><text x="20" y="852" class="rail" fill="#20262c">GND</text>
+
+  <rect x="625" y="150" width="350" height="610" rx="12" class="controller"/>
+  <text x="800" y="420" text-anchor="middle" class="label" font-size="34">ARDUINO</text>
+  <text x="800" y="460" text-anchor="middle" class="label" font-size="30">UNO R4 MINIMA</text>
+
+  <rect x="95" y="160" width="330" height="190" rx="10" class="box"/>
+  <text x="260" y="200" text-anchor="middle" class="label">HC-SR04</text>
+  <text x="125" y="245" class="small">VCC</text><text x="125" y="285" class="small">TRIG</text><text x="125" y="325" class="small">ECHO</text><text x="350" y="345" class="small">GND</text>
+  <path class="power" d="M50 95V720M50 225H95"/><path class="ground" d="M385 340V370H470V845"/>
+  <path class="signal" d="M205 280H625"/><text x="440" y="270" class="pin">D9 → TRIG</text>
+  <path class="signal" d="M205 320H625"/><text x="425" y="345" class="pin">D10 ← ECHO</text>
+
+  <rect x="95" y="405" width="330" height="190" rx="10" class="box"/>
+  <text x="260" y="445" text-anchor="middle" class="label">LDR DIVIDER</text>
+  <path class="power" d="M50 470H95"/><circle cx="50" cy="470" r="7" fill="#d83a3a"/>
+  <text x="180" y="477" class="small">LDR</text>
+  <path class="signal" d="M155 510H625"/><circle cx="155" cy="510" r="7" fill="#1976a3"/><text x="440" y="500" class="pin">A0 ← SIGNAL</text>
+  <path class="ground" d="M155 550V565H470"/><text x="185" y="540" class="small">10 kΩ</text>
+
+  <rect x="95" y="650" width="330" height="140" rx="10" class="box"/>
+  <text x="260" y="690" text-anchor="middle" class="label">DHT11</text>
+  <path class="power" d="M50 720H95"/><path class="ground" d="M385 760V780H470"/>
+  <path class="signal" d="M220 740H625"/><text x="445" y="730" class="pin">D7 ↔ DATA</text>
+  <text x="115" y="727" class="small">VCC</text><text x="175" y="747" class="small">DATA</text><text x="335" y="767" class="small">GND</text>
+
+  <rect x="1115" y="165" width="390" height="355" rx="10" class="box"/>
+  <text x="1310" y="205" text-anchor="middle" class="label">COMMON-CATHODE RGB LED</text>
+  <path class="signal rgb-r" d="M975 270H1115"/><text x="985" y="255" class="pin">D3</text>
+  <path class="resistor rgb-r" d="M1115 270l18-12 18 24 18-24 18 24 18-12h95"/><text x="1195" y="250" class="small">220–330 Ω</text><text x="1410" y="278" class="small" fill="#d72f36">RED</text>
+  <path class="signal rgb-g" d="M975 350H1115"/><text x="985" y="335" class="pin">D5</text>
+  <path class="resistor rgb-g" d="M1115 350l18-12 18 24 18-24 18 24 18-12h95"/><text x="1195" y="330" class="small">220–330 Ω</text><text x="1410" y="358" class="small" fill="#16974b">GREEN</text>
+  <path class="signal rgb-b" d="M975 430H1115"/><text x="985" y="415" class="pin">D6</text>
+  <path class="resistor rgb-b" d="M1115 430l18-12 18 24 18-24 18 24 18-12h95"/><text x="1195" y="410" class="small">220–330 Ω</text><text x="1410" y="438" class="small" fill="#286bd6">BLUE</text>
+  <path class="ground" d="M1400 270H1455V845M1400 350H1455M1400 430H1455"/><circle cx="1455" cy="270" r="9" class="node" fill="#20262c"/><circle cx="1455" cy="350" r="9" class="node" fill="#20262c"/><circle cx="1455" cy="430" r="9" class="node" fill="#20262c"/>
+  <text x="1310" y="490" text-anchor="middle" class="small">COMMON CATHODE → GND</text>
+
+  <rect x="1115" y="610" width="390" height="160" rx="10" class="box"/>
+  <text x="1310" y="650" text-anchor="middle" class="label">PASSIVE BUZZER</text>
+  <path class="signal" d="M975 700H1225"/><text x="990" y="685" class="pin">D11 → +</text>
+  <circle cx="1320" cy="700" r="48" fill="#edf3f6" stroke="#17212b" stroke-width="3"/>
+  <text x="1315" y="708" text-anchor="middle" class="label">♪</text><text x="1378" y="708" class="small">−</text>
+  <path class="ground" d="M1400 700V845"/>
+
+  <circle cx="50" cy="95" r="7" fill="#d83a3a"/><circle cx="50" cy="225" r="7" fill="#d83a3a"/><circle cx="50" cy="720" r="7" fill="#d83a3a"/>
+  <circle cx="470" cy="845" r="7" fill="#20262c"/><circle cx="1400" cy="845" r="7" fill="#20262c"/><circle cx="1455" cy="845" r="7" fill="#20262c"/>
+</svg>

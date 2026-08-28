@@ -28,22 +28,33 @@ class MemoryRepository:
         memory_id = str(uuid.uuid4())
         now = time.time()
         with self.database.transaction() as connection:
-            connection.execute(
-                """
-                INSERT INTO memories (
-                    id, category, content, importance, source, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    memory_id,
-                    clean_category,
-                    clean_content,
-                    importance,
-                    source,
-                    now,
-                    now,
-                ),
-            )
+            existing = connection.execute(
+                "SELECT id FROM memories WHERE lower(content) = lower(?) LIMIT 1",
+                (clean_content,),
+            ).fetchone()
+            if existing:
+                connection.execute(
+                    "UPDATE memories SET importance = max(importance, ?), updated_at = ? WHERE id = ?",
+                    (importance, now, existing["id"]),
+                )
+                memory_id = existing["id"]
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO memories (
+                        id, category, content, importance, source, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        memory_id,
+                        clean_category,
+                        clean_content,
+                        importance,
+                        source,
+                        now,
+                        now,
+                    ),
+                )
         return self.get(memory_id)
 
     def get(self, memory_id: str) -> dict | None:
@@ -82,3 +93,24 @@ class MemoryRepository:
                     (safe_limit,),
                 ).fetchall()
         return [dict(row) for row in rows]
+
+    def recall_relevant(self, query: str, *, limit: int = 6) -> list[dict]:
+        words = {
+            word.lower() for word in query.split()
+            if len(word) >= 3
+        }
+        memories = self.recall(limit=100)
+        ranked = sorted(
+            memories,
+            key=lambda item: (
+                sum(word in item["content"].lower() for word in words),
+                item["importance"],
+                item["updated_at"],
+            ),
+            reverse=True,
+        )
+        relevant = [
+            item for item in ranked
+            if any(word in item["content"].lower() for word in words)
+        ]
+        return (relevant or ranked)[:max(1, min(limit, 20))]

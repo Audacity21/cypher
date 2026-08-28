@@ -24,6 +24,12 @@ class OllamaProvider:
             "prompt": prompt,
             "stream": False,
             "format": "json",
+            "options": {
+                "temperature": 0.55,
+                "top_p": 0.85,
+                "repeat_penalty": 1.15,
+                "num_predict": 140,
+            },
         }
 
         request = urllib.request.Request(

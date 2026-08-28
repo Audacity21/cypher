@@ -12,6 +12,19 @@
         <h1>VOICE CONSOLE</h1>
         <p id="status" class="status">READY</p>
 
+        <div id="core" class="cypher-core" data-state="ready" aria-hidden="true">
+          <div class="core-ring ring-one"></div>
+          <div class="core-ring ring-two"></div>
+          <div class="core-ring ring-three"></div>
+          <div class="core-center">C</div>
+        </div>
+
+        <div class="system-strip">
+          <div><span>VOICE</span><strong id="voice-name">DETECTING</strong></div>
+          <div><span>SESSION</span><strong id="session-time">WAKE WORD</strong></div>
+          <div><span>MODEL</span><strong>QWEN 2.5</strong></div>
+        </div>
+
         <button id="listen" class="listen" type="button">
           START LISTENING
         </button>
@@ -43,6 +56,13 @@
           <input id="speak" type="checkbox" checked />
           SPEAK RESPONSES
         </label>
+
+        <section class="history-panel">
+          <div class="history-title">RECENT EXCHANGE</div>
+          <div id="history" class="history-list">
+            <p class="history-empty">NO CONVERSATION YET</p>
+          </div>
+        </section>
       </section>
     </main>
     <script type="module" src="/src/voice.ts"></script>

@@ -11,6 +11,10 @@ class FakeWorldState:
             "smoothed_distance_cm": 42.25,
             "light_percent": 18,
             "light_state": "DIM",
+            "temperature_c": 27.0,
+            "temperature_state": "NORMAL",
+            "humidity_percent": 63.0,
+            "humidity_state": "HUMID",
         }
 
 
@@ -46,6 +50,44 @@ class FakeHardware:
     def get_light(self):
         return 100
 
+    def get_climate(self):
+        return {"temperature_c": 27.0, "humidity_percent": 63.0}
+
+
+class FakeActions:
+    def __init__(self):
+        self.status = "OFF"
+
+    def set_status(self, status):
+        self.status = status
+        return {"status": status, "rgb": {}}
+
+    def play_sound(self, sound):
+        return {"sound": sound, "tones": []}
+
+    def stop_sound(self):
+        return {"stopped": True}
+
+    def get_status(self):
+        return self.status
+
+
+class FakeMusicResolver:
+    def __init__(self):
+        self.stopped = False
+
+    def play(self, query=None):
+        return {
+            "video_id": "dX3k_QDnzHE" if query else "e8WoWk4b3D0",
+            "title": query or "Levitating",
+            "watch_url": "https://music.youtube.com/watch?v=dX3k_QDnzHE" if query else "https://music.youtube.com/watch?v=e8WoWk4b3D0",
+            "playlist_id": None if query else "PLRHSp1QuRiOY",
+        }
+
+    def stop(self):
+        self.stopped = True
+        return {"stopped": True}
+
 
 def make_agent(tmp_path):
     database = CypherDatabase(tmp_path / "cypher.db")
@@ -55,7 +97,9 @@ def make_agent(tmp_path):
         alarms=AlarmRepository(database),
         world_state=FakeWorldState(),
         hardware=FakeHardware(),
+        actions=FakeActions(),
         llm=FakeLlm(),
+        music_resolver=FakeMusicResolver(),
     )
 
 
@@ -140,3 +184,84 @@ def test_identity_roles_cannot_be_reversed_by_qwen(tmp_path):
 
     assert assistant["reply"] == "My name is Cypher, Ankit."
     assert owner["reply"] == "Your name is Ankit."
+
+
+def test_greeting_always_addresses_ankit(tmp_path):
+    agent = make_agent(tmp_path)
+    assert agent.handle(text="Hello Cypher")["reply"] == "Hello, Ankit. Cypher is listening."
+
+
+def test_agent_can_run_allowlisted_rgb_action(tmp_path):
+    agent = make_agent(tmp_path)
+
+    result = agent.handle(text="Cypher, set the lights to purple")
+
+    assert result["tool"]["name"] == "set_cypher_status"
+    assert result["tool"]["result"]["status"] == "THINKING"
+    assert agent.actions.status == "THINKING"
+
+
+def test_agent_can_run_allowlisted_sound_action(tmp_path):
+    agent = make_agent(tmp_path)
+
+    result = agent.handle(text="Run a sound check")
+
+    assert result["tool"]["name"] == "play_cypher_sound"
+    assert result["tool"]["result"]["sound"] == "PRESENCE"
+
+
+def test_agent_can_stop_buzzer(tmp_path):
+    agent = make_agent(tmp_path)
+    result = agent.handle(text="Silence the buzzer")
+    assert result["tool"]["name"] == "stop_cypher_sound"
+
+
+def test_agent_can_start_default_music_playlist(tmp_path):
+    agent = make_agent(tmp_path)
+    result = agent.handle(text="Play my playlist")
+    assert result["tool"] == {
+        "name": "play_music",
+        "result": {
+            "video_id": "e8WoWk4b3D0",
+            "title": "Levitating",
+            "watch_url": "https://music.youtube.com/watch?v=e8WoWk4b3D0",
+            "playlist_id": "PLRHSp1QuRiOY",
+        },
+    }
+
+
+def test_agent_can_request_a_song(tmp_path):
+    agent = make_agent(tmp_path)
+    result = agent.handle(text="Play Midnight City on YouTube Music")
+    assert result["tool"]["name"] == "play_music"
+    assert result["tool"]["result"]["video_id"] == "dX3k_QDnzHE"
+
+
+def test_agent_can_stop_music(tmp_path):
+    agent = make_agent(tmp_path)
+    result = agent.handle(text="Stop the music")
+    assert result["tool"] == {"name": "stop_music", "result": {"stopped": True}}
+
+
+def test_agent_reports_real_system_status(tmp_path):
+    agent = make_agent(tmp_path)
+    result = agent.handle(text="Give me a system status report")
+    assert result["tool"]["name"] == "get_system_status"
+    assert result["tool"]["result"]["distance_cm"] == 42.25
+    assert "hardware state is off" in result["reply"]
+
+
+def test_temperature_never_falls_through_to_qwen(tmp_path):
+    agent = make_agent(tmp_path)
+    result = agent.handle(text="What is the temperature?")
+    assert result["tool"]["name"] == "get_temperature"
+    assert result["tool"]["result"]["temperature_c"] == 27.0
+
+    short_prompt = agent.handle(text="Room temp?")
+    assert short_prompt["tool"]["name"] == "get_temperature"
+
+
+def test_agent_can_set_yellow_light(tmp_path):
+    agent = make_agent(tmp_path)
+    result = agent.handle(text="Turn the light yellow")
+    assert result["tool"]["result"]["status"] == "YELLOW"

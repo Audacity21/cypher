@@ -72,10 +72,13 @@ class ConversationRepository:
         with self.database.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT * FROM messages
-                WHERE conversation_id = ?
+                SELECT * FROM (
+                    SELECT * FROM messages
+                    WHERE conversation_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                ) recent
                 ORDER BY created_at ASC
-                LIMIT ?
                 """,
                 (conversation_id, safe_limit),
             ).fetchall()

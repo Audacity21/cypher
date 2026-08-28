@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from backend.actions.action_engine import ActionEngine
 from backend.actions.behavior_engine import BehaviorEngine
 from backend.agent.conversation_agent import ConversationAgent
+from backend.agent.proactive_companion import ProactiveCompanion
 from backend.alarms.alarm_service import AlarmService
 from backend.perception.event_engine import EventEngine
 from backend.hardware.hardware import CypherHardware
@@ -110,12 +111,19 @@ alarm_service = AlarmService(
     actions=action_engine,
 )
 
+proactive_companion = ProactiveCompanion(
+    inactivity_seconds=600,
+    response_seconds=10,
+)
+
 conversation_agent = ConversationAgent(
     conversations=conversation_repository,
     memories=memory_repository,
     alarms=alarm_repository,
     world_state=world_state,
     hardware=hardware,
+    actions=action_engine,
+    proactive=proactive_companion,
     llm=OllamaProvider(model="qwen2.5:1.5b"),
 )
 
@@ -128,6 +136,18 @@ class TimerRequest(BaseModel):
 class AgentRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     conversation_id: str | None = None
+
+
+class ActionStatusRequest(BaseModel):
+    status: str
+
+
+async def identity_challenge_watchdog():
+    while True:
+        if proactive_companion.check_timeout():
+            print("[CYPHER SECURITY] Identity challenge timed out")
+            await asyncio.to_thread(action_engine.security_alarm)
+        await asyncio.sleep(0.25)
 
 
 # ============================================================
@@ -168,13 +188,20 @@ async def lifespan(
         alarm_service.run(),
         name="cypher-alarm-service",
     )
+    challenge_task = asyncio.create_task(
+        identity_challenge_watchdog(),
+        name="cypher-identity-challenge",
+    )
 
     try:
         yield
     finally:
         alarm_task.cancel()
+        challenge_task.cancel()
         with suppress(asyncio.CancelledError):
             await alarm_task
+        with suppress(asyncio.CancelledError):
+            await challenge_task
 
         print(
             "Stopping Cypher backend..."
@@ -250,6 +277,22 @@ async def get_action_status():
         "status":
             action_engine.get_status()
     }
+
+
+@app.get("/notifications")
+async def get_notifications():
+    return {"notifications": proactive_companion.drain(limit=1)}
+
+
+@app.post("/action/status")
+async def set_action_status(request: ActionStatusRequest):
+    try:
+        return await asyncio.to_thread(
+            action_engine.set_status,
+            request.status,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/intelligence/shadow")
@@ -405,6 +448,8 @@ async def websocket_sensors(
             # =================================================
 
             for event in events:
+
+                proactive_companion.handle_event(event)
 
                 print(
                     f"[CYPHER EVENT] "

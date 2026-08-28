@@ -4,6 +4,7 @@ from backend.actions.action_engine import ActionEngine
 class FakeHardware:
     def __init__(self):
         self.tones = []
+        self.colors = []
         self.stopped = False
 
     def play_tone(self, frequency_hz, duration_ms):
@@ -18,6 +19,11 @@ class FakeHardware:
         self.stopped = True
         return {}
 
+    def set_rgb(self, red, green, blue):
+        result = {"r": red, "g": green, "b": blue}
+        self.colors.append(result)
+        return result
+
 
 def test_alert_sound_uses_semantic_pattern(monkeypatch):
     hardware = FakeHardware()
@@ -27,7 +33,9 @@ def test_alert_sound_uses_semantic_pattern(monkeypatch):
     result = actions.play_sound("ALERT")
 
     assert result["sound"] == "ALERT"
-    assert [tone["frequency_hz"] for tone in hardware.tones] == [440, 660, 440]
+    assert [tone["frequency_hz"] for tone in hardware.tones] == [
+        880, 660, 880, 660, 1047, 784, 1047,
+    ]
 
 
 def test_stop_sound_reaches_hardware():
@@ -37,3 +45,13 @@ def test_stop_sound_reaches_hardware():
     actions.stop_sound()
 
     assert hardware.stopped is True
+
+
+def test_security_alarm_cycles_lights_and_tones(monkeypatch):
+    hardware = FakeHardware()
+    actions = ActionEngine(hardware)
+    monkeypatch.setattr("backend.actions.action_engine.time.sleep", lambda _: None)
+    result = actions.security_alarm()
+    assert result["lighting"] == "DISCO_ALERT"
+    assert len(hardware.tones) == 7
+    assert len({tuple(color.values()) for color in hardware.colors}) >= 4

@@ -48,6 +48,15 @@ def test_memory_survives_database_reopen(tmp_path):
     assert recalled == [saved]
 
 
+def test_memory_deduplicates_and_retrieves_relevant_fact(tmp_path):
+    memories = MemoryRepository(CypherDatabase(tmp_path / "cypher.db"))
+    first = memories.remember(content="Ankit prefers concise answers")
+    second = memories.remember(content="Ankit prefers concise answers", importance=0.9)
+    memories.remember(content="Ankit likes cyan lighting")
+    assert first["id"] == second["id"]
+    assert memories.recall_relevant("How should answers be written?")[0]["id"] == first["id"]
+
+
 def test_conversation_history_survives_database_reopen(tmp_path):
     path = tmp_path / "cypher.db"
     conversations = ConversationRepository(CypherDatabase(path))
@@ -68,6 +77,14 @@ def test_conversation_history_survives_database_reopen(tmp_path):
 
     assert [message["role"] for message in history] == ["user", "assistant"]
     assert history[0]["content"] == "How far away am I?"
+
+
+def test_conversation_history_limit_returns_latest_messages(tmp_path):
+    repository = ConversationRepository(CypherDatabase(tmp_path / "cypher.db"))
+    conversation = repository.create()
+    for index in range(5):
+        repository.add_message(conversation_id=conversation["id"], role="user", content=f"turn {index}")
+    assert [item["content"] for item in repository.history(conversation["id"], limit=2)] == ["turn 3", "turn 4"]
 
 
 def test_timer_survives_reopen_and_fires_once(tmp_path):
